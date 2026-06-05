@@ -1,4 +1,4 @@
-import { AI_MODEL, getOpenAI } from "@/lib/openai";
+import { generateJson } from "@/lib/gemini";
 import { buildItineraryPrompt } from "@/lib/prompts";
 import { getTripPlan } from "@/lib/transport-nsw";
 import { getWeatherForecast, getWeatherPackingTips } from "@/lib/weather";
@@ -60,7 +60,6 @@ export async function POST(req: NextRequest) {
     const packingTips = visitWeather ? getWeatherPackingTips(visitWeather) : [];
 
     // Build AI itinerary
-    const openai = getOpenAI();
     const systemPrompt = buildItineraryPrompt(profile);
 
     const userContent = `
@@ -92,26 +91,7 @@ Return JSON with these keys:
 - riskDetails: { [category]: { score: number, detail: string } }
 `.trim();
 
-    const completion = await openai.chat.completions.create({
-      model: AI_MODEL,
-      temperature: 0.3,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userContent },
-      ],
-    });
-
-    const rawJson = completion.choices[0]?.message?.content ?? "{}";
-    let itineraryData: unknown;
-    try {
-      itineraryData = JSON.parse(rawJson);
-    } catch {
-      return NextResponse.json(
-        { error: "Failed to parse itinerary from AI response" },
-        { status: 500 }
-      );
-    }
+    const itineraryData = await generateJson(systemPrompt, userContent);
 
     // Assemble final itinerary
     const itinerary = {

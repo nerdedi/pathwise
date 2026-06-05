@@ -1,5 +1,5 @@
 import { crawlVenueSite, scrapeVenueUrl } from "@/lib/firecrawl";
-import { AI_MODEL, getOpenAI } from "@/lib/openai";
+import { generateJson } from "@/lib/gemini";
 import { VENUE_EXTRACTION_SYSTEM_PROMPT } from "@/lib/prompts";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -30,30 +30,8 @@ export async function POST(req: NextRequest) {
       .slice(0, 60000); // stay within token limits
 
     // 3. Extract structured venue data with Gemini
-    const openai = getOpenAI();
-    const completion = await openai.chat.completions.create({
-      model: AI_MODEL,
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: VENUE_EXTRACTION_SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: `Extract structured venue data from the following website content.\n\nWebsite URL: ${url}\n\nContent:\n${combinedContent}`,
-        },
-      ],
-    });
-
-    const rawJson = completion.choices[0]?.message?.content ?? "{}";
-    let venueData: unknown;
-    try {
-      venueData = JSON.parse(rawJson);
-    } catch {
-      return NextResponse.json(
-        { error: "Failed to parse venue data from AI response" },
-        { status: 500 }
-      );
-    }
+    const userMessage = `Extract structured venue data from the following website content.\n\nWebsite URL: ${url}\n\nContent:\n${combinedContent}`;
+    const venueData = await generateJson(VENUE_EXTRACTION_SYSTEM_PROMPT, userMessage);
 
     return NextResponse.json({ venueData });
   } catch (err) {
