@@ -1,4 +1,4 @@
-import { getOpenAI } from "@/lib/openai";
+import { AI_MODEL, getOpenAI } from "@/lib/openai";
 import { buildItineraryPrompt } from "@/lib/prompts";
 import { getTripPlan } from "@/lib/transport-nsw";
 import { getWeatherForecast, getWeatherPackingTips } from "@/lib/weather";
@@ -93,7 +93,7 @@ Return JSON with these keys:
 `.trim();
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: AI_MODEL,
       temperature: 0.3,
       response_format: { type: "json_object" },
       messages: [

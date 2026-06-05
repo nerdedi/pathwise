@@ -1,5 +1,5 @@
 import { crawlVenueSite, scrapeVenueUrl } from "@/lib/firecrawl";
-import { getOpenAI } from "@/lib/openai";
+import { AI_MODEL, getOpenAI } from "@/lib/openai";
 import { VENUE_EXTRACTION_SYSTEM_PROMPT } from "@/lib/prompts";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -29,10 +29,10 @@ export async function POST(req: NextRequest) {
       .join("\n\n---\n\n")
       .slice(0, 60000); // stay within token limits
 
-    // 3. Extract structured venue data with GPT-4o
+    // 3. Extract structured venue data with Gemini
     const openai = getOpenAI();
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: AI_MODEL,
       temperature: 0.1,
       response_format: { type: "json_object" },
       messages: [
