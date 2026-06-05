@@ -45,50 +45,46 @@ export async function scrapeVenueUrl(url: string): Promise<FirecrawlResult> {
 }
 
 /**
- * Crawl multiple pages from a venue website (e.g. /accessibility, /visit, /cafe)
+ * Crawl multiple pages from a venue website by scraping key sub-pages.
+ * Uses the synchronous /v1/scrape endpoint for each page (no polling needed).
  */
 export async function crawlVenueSite(
   url: string,
   maxPages = 5
 ): Promise<FirecrawlResult[]> {
-  const apiKey = process.env.FIRECRAWL_API_KEY;
-  if (!apiKey) {
-    throw new Error("FIRECRAWL_API_KEY is not set");
+  const baseUrl = new URL(url).origin;
+
+  // Sub-paths to try in addition to the homepage
+  const subPaths = [
+    "/visit",
+    "/plan-your-visit",
+    "/accessibility",
+    "/accessibility-information",
+    "/contact",
+    "/cafe",
+    "/food-and-drink",
+    "/parking",
+    "/transport",
+  ].slice(0, maxPages - 1);
+
+  // Scrape homepage + sub-paths in parallel (cap at maxPages)
+  const urls = [url, ...subPaths.map((p) => baseUrl + p)];
+
+  const results = await Promise.allSettled(
+    urls.slice(0, maxPages).map((u) => scrapeVenueUrl(u))
+  );
+
+  const pages: FirecrawlResult[] = [];
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value.markdown.length > 100) {
+      pages.push(r.value);
+    }
   }
 
-  const res = await fetch("https://api.firecrawl.dev/v1/crawl", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      url,
-      limit: maxPages,
-      scrapeOptions: { formats: ["markdown"], onlyMainContent: true },
-      // Prioritise accessibility and visit planning pages
-      includePaths: [
-        "*accessibility*",
-        "*visit*",
-        "*plan*",
-        "*cafe*",
-        "*food*",
-        "*transport*",
-        "*parking*",
-        "*contact*",
-      ],
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Firecrawl crawl error ${res.status}: ${text}`);
+  // Always return at least the homepage scrape
+  if (pages.length === 0) {
+    return [await scrapeVenueUrl(url)];
   }
 
-  const data = await res.json();
-  // Return each page's result
-  return (data.data ?? []).map((page: { markdown?: string; metadata?: Record<string, unknown> }) => ({
-    markdown: page.markdown ?? "",
-    metadata: page.metadata ?? {},
-  }));
+  return pages;
 }
