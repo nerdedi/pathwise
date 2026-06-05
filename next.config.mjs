@@ -9,6 +9,8 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ["mapbox-gl"],
   },
+  // Add allowedDevOrigins at the root level, not inside experimental
+  allowedDevOrigins: ["localhost", "127.0.0.1", "0.0.0.0"],
 };
 
 export default nextConfig;

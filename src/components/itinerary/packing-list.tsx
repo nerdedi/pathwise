@@ -68,7 +68,7 @@ export default function PackingList({ items }: PackingListProps) {
       </CardHeader>
       <CardContent className="space-y-5">
         {Object.entries(grouped).map(([cat, catItems]) => {
-          const meta = CATEGORY_LABELS[cat as PackingItem["category"]];
+          const meta = CATEGORY_LABELS[cat as PackingItem["category"]] || { label: cat, emoji: "📦" };
           return (
             <div key={cat}>
               <p className="text-xs font-semibold text-sage-600 uppercase tracking-wide mb-2">
