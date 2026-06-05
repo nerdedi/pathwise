@@ -7,7 +7,58 @@ export const VENUE_EXTRACTION_SYSTEM_PROMPT = `
 You are an expert accessibility and neurodiversity support specialist.
 Your job is to extract structured information from venue website content to help neurodiverse, neurodivergent, and anxious visitors prepare for a visit.
 
-Return ONLY valid JSON matching the VenueData TypeScript type. Do not include markdown fences or explanation.
+Return ONLY valid JSON with EXACTLY these top-level keys (no others, no markdown fences):
+{
+  "name": "full venue name",
+  "url": "venue website url",
+  "address": "street address",
+  "suburb": "suburb name",
+  "state": "NSW",
+  "postcode": "2088",
+  "location": { "lat": -33.84, "lng": 151.24 },
+  "phoneNumber": "02 9999 0000",
+  "email": "contact@venue.com.au",
+  "website": "https://venue.com.au",
+  "venueType": "zoo",
+  "openingHours": { "Monday": "9am–5pm", "Tuesday": "9am–5pm", "Wednesday": "9am–5pm", "Thursday": "9am–5pm", "Friday": "9am–5pm", "Saturday": "9am–5pm", "Sunday": "9am–5pm" },
+  "admissionInfo": "Adults $45, Children $25",
+  "bookingRequired": false,
+  "bookingUrl": null,
+  "facilities": [
+    { "id": "t1", "type": "toilet", "label": "Main Toilets", "floor": "Ground", "description": "Near main entrance", "isAccessible": false },
+    { "id": "at1", "type": "accessible-toilet", "label": "Accessible Toilet", "floor": "Ground", "description": "Near main entrance", "isAccessible": true }
+  ],
+  "cafeterias": [
+    { "name": "Cafe Name", "location": "Near main entrance", "floor": "Ground", "openingHours": "9am–4pm", "priceRange": "moderate", "menu": [], "canBringOwnFood": true }
+  ],
+  "zones": [
+    { "id": "z1", "name": "Zone Name", "description": "Description", "sensoryRatings": [{ "category": "sound", "level": "medium", "description": "Moderate animal sounds" }], "activities": ["Activity 1"], "isQuiet": false }
+  ],
+  "atmosphereDescription": "description",
+  "lightingDescription": "description",
+  "soundDescription": "description",
+  "smellDescription": "description",
+  "overallSensoryRating": "moderate",
+  "nearestTrainStation": "Taronga Zoo Wharf (ferry)",
+  "nearestBusStop": "Bus stop on Bradleys Head Rd",
+  "parkingAvailable": true,
+  "parkingDetails": "description",
+  "dropOffArea": "description",
+  "accessibleParkingDetails": "description",
+  "popularWith": ["families", "tourists"],
+  "peakDays": ["Saturday", "Sunday"],
+  "peakTimes": "10am–2pm on weekends",
+  "quietTimes": "Weekday mornings before 10am",
+  "accessibilityContactPhone": "02 9999 0000",
+  "accessibilityContactEmail": "accessibility@venue.com.au",
+  "accessibilityNotes": "description",
+  "wheelchairAccessible": true,
+  "hearingLoopAvailable": false,
+  "signageDescription": "description",
+  "allDayActivities": ["Activity 1", "Activity 2"],
+  "tipFromVisitors": "helpful tip",
+  "communityNotes": []
+}
 
 Focus especially on:
 - ALL toilet locations (standard, accessible, gender-neutral, baby-change)

@@ -79,19 +79,23 @@ WEATHER PACKING TIPS: ${packingTips.join(", ") || "none"}
 TRANSPORT TO VENUE:
 ${tripPlanTo.status === "fulfilled" && tripPlanTo.value ? JSON.stringify(tripPlanTo.value, null, 2) : "Not available — provide general advice"}
 
-Return JSON with these keys:
-- sections: ItinerarySection[] (id, title, emoji, content, details[], isExpandable)
-  Include: before-you-go, getting-there, when-you-arrive, the-space, what-to-do, eating-drinking, if-overwhelmed, getting-home
-- packingList: PackingItem[] (item, reason, priority, category)
-- crisisPlan: CrisisPlan (steps[], quietRooms[], exits[], helpDeskLocation, venuePhone, selfCareReminders[])
-- affirmations: Affirmation[] (text, timing: before|during|overwhelmed|after)
-- socialStory: SocialStoryPanel[] (sequence, title, text, imagePrompt, emotion)
-- riskScore: number 1-10
+Return a flat JSON object (no wrapper key) with EXACTLY these top-level keys:
+- sections: array of objects, each with: id (string), title (string), emoji (string), content (string), details (string[]), isExpandable (boolean)
+  Include these section ids: before-you-go, getting-there, when-you-arrive, the-space, what-to-do, eating-drinking, if-overwhelmed, getting-home
+- packingList: array of objects, each with: item (string), reason (string), priority ("essential"|"recommended"|"optional"), category (string)
+- crisisPlan: object with: steps (string[]), quietRooms (string[]), exits (string[]), helpDeskLocation (string), venuePhone (string), selfCareReminders (string[])
+- affirmations: array of objects, each with: text (string), timing ("before"|"during"|"overwhelmed"|"after")
+- socialStory: array of objects, each with: sequence (number), title (string), text (string), imagePrompt (string), emotion (string)
+- riskScore: number from 1 to 10
 - riskSummary: string
-- riskDetails: { [category]: { score: number, detail: string } }
+- riskDetails: object where each key is a category name and value is { score: number, detail: string }
+
+Do NOT wrap the output in any outer key like "itinerary". Return the flat object directly.
 `.trim();
 
-    const itineraryData = await generateJson(systemPrompt, userContent);
+    const rawData = await generateJson(systemPrompt, userContent) as Record<string, unknown>;
+    // Unwrap if model returned { itinerary: {...} } instead of flat object
+    const itineraryData = (rawData.sections ? rawData : (rawData.itinerary ?? rawData)) as Record<string, unknown>;
 
     // Assemble final itinerary
     const itinerary = {
