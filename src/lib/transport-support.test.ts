@@ -1,11 +1,11 @@
 import type { TransportPlan } from "@/types/itinerary";
 import { describe, expect, it } from "vitest";
 import {
-  buildAlternativeRouteOptions,
-  buildPostTransitWalkingGuidance,
-  buildPreTripAlerts,
-  buildTransportSupportCards,
-  buildTripOptimisationTips,
+    buildAlternativeRouteOptions,
+    buildPostTransitWalkingGuidance,
+    buildPreTripAlerts,
+    buildTransportSupportCards,
+    buildTripOptimisationTips,
 } from "./transport-support";
 
 const makePlan = (overrides: Partial<TransportPlan> = {}): TransportPlan => ({

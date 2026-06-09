@@ -766,22 +766,30 @@ export default function ItineraryView({
         {/* Transport */}
         {draftItinerary.transportTo && (
           <TransportSection
+            itineraryId={draftItinerary.id}
             plan={draftItinerary.transportTo}
             direction="to"
             venueName={venue.name}
             supportCardName={draftItinerary.sensoryProfile.supportCardName}
             supportCardMessage={draftItinerary.sensoryProfile.supportCardMessage}
             emergencyContacts={draftItinerary.sensoryProfile.emergencyContacts}
+            wantsVoiceAssistance={draftItinerary.sensoryProfile.wantsTextToSpeech}
+            copingStrategies={draftItinerary.sensoryProfile.copingStrategies}
+            groundingTechniques={draftItinerary.sensoryProfile.groundingTechniques}
           />
         )}
         {draftItinerary.transportFrom && (
           <TransportSection
+            itineraryId={draftItinerary.id}
             plan={draftItinerary.transportFrom}
             direction="from"
             venueName={venue.name}
             supportCardName={draftItinerary.sensoryProfile.supportCardName}
             supportCardMessage={draftItinerary.sensoryProfile.supportCardMessage}
             emergencyContacts={draftItinerary.sensoryProfile.emergencyContacts}
+            wantsVoiceAssistance={draftItinerary.sensoryProfile.wantsTextToSpeech}
+            copingStrategies={draftItinerary.sensoryProfile.copingStrategies}
+            groundingTechniques={draftItinerary.sensoryProfile.groundingTechniques}
           />
         )}
 
