@@ -31,6 +31,7 @@ export interface TripLeg {
   departureTime: string;
   arrivalTime: string;
   durationMinutes: number;
+  approximateSteps?: number;
   platform?: string;
   accessibility?: string;
   stopSequence?: { name: string; time: string }[];
@@ -173,6 +174,16 @@ function buildStationWayfinding(legs: TripLeg[], req: TripPlanRequest): NonNulla
 export async function getTripPlan(
   req: TripPlanRequest
 ): Promise<TripPlanResult | null> {
+  type RawLeg = {
+    transportation?: { product?: { name?: string }; number?: string; name?: string };
+    origin?: { name?: string; departureTimePlanned?: string };
+    destination?: { name?: string; arrivalTimePlanned?: string };
+  };
+
+  type RawJourney = {
+    legs?: RawLeg[];
+  };
+
   const apiKey = process.env.TRANSPORT_NSW_API_KEY;
   if (!apiKey) return null;
 
@@ -196,19 +207,15 @@ export async function getTripPlan(
 
   if (!res.ok) return null;
 
-  const data = await res.json();
+  const data = (await res.json()) as { journeys?: RawJourney[] };
   const journeys = (data.journeys ?? []).slice(0, 3);
   if (!journeys.length) return null;
 
   const routePreference = req.routePreference ?? "balanced";
 
-  const candidates = journeys.map((journey: { legs?: unknown[] }) => {
+  const candidates = journeys.map((journey: RawJourney) => {
     const legs: TripLeg[] = (journey.legs ?? []).map(
-    (leg: {
-      transportation?: { product?: { name?: string }; number?: string; name?: string };
-      origin?: { name?: string; departureTimePlanned?: string };
-      destination?: { name?: string; arrivalTimePlanned?: string };
-    }) => {
+    (leg: RawLeg) => {
       const depTime = leg.origin?.departureTimePlanned ?? "";
       const arrTime = leg.destination?.arrivalTimePlanned ?? "";
       const dep = depTime ? new Date(depTime) : new Date();
@@ -226,6 +233,7 @@ export async function getTripPlan(
         departureTime: depTime,
         arrivalTime: arrTime,
         durationMinutes,
+        approximateSteps: mode === "walk" ? Math.max(200, durationMinutes * 90) : 40,
         accessibility: "Accessible",
         crowdingLevel: inferCrowding(hour, mode),
         noiseLevel: inferNoise(mode),

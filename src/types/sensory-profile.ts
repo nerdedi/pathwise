@@ -51,6 +51,7 @@ export interface SensoryProfile {
   needsLiveLiftInfo: boolean;
   supportCardName: string;
   supportCardMessage: string;
+  groundingTechniques: string[];
   emergencyContacts: EmergencyContact[];
 
   createdAt?: string;
@@ -85,5 +86,6 @@ export const defaultSensoryProfile: SensoryProfile = {
   needsLiveLiftInfo: false,
   supportCardName: "",
   supportCardMessage: "I may need a little extra time and clear instructions.",
+  groundingTechniques: [],
   emergencyContacts: [],
 };

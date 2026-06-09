@@ -34,6 +34,7 @@ const ProfileSchema: z.ZodType<SensoryProfile> = z.object({
   needsLiveLiftInfo: z.boolean(),
   supportCardName: z.string(),
   supportCardMessage: z.string(),
+  groundingTechniques: z.array(z.string()),
   emergencyContacts: z.array(
     z.object({
       name: z.string(),
@@ -82,6 +83,10 @@ function mapDbToProfile(row: Record<string, unknown>): SensoryProfile {
     supportCardMessage:
       (row.support_card_message as string) ??
       "I may need a little extra time and clear instructions.",
+    groundingTechniques:
+      ((row.grounding_techniques as string[] | undefined) ??
+        (row.coping_strategies as string[] | undefined) ??
+        []),
     emergencyContacts:
       ((row.emergency_contacts as SensoryProfile["emergencyContacts"]) ?? []).filter(
         (contact) => contact && contact.name && contact.phone
@@ -154,7 +159,10 @@ export async function POST(req: NextRequest) {
       needs_dietary_info: profile.needsDietaryInfo,
       uses_mobility_aid: profile.usesMobilityAid,
       has_medical_needs: profile.hasMedicalNeeds,
-      coping_strategies: profile.copingStrategies,
+      coping_strategies:
+        profile.copingStrategies.length > 0
+          ? profile.copingStrategies
+          : profile.groundingTechniques,
       exit_strategy: profile.exitStrategy,
       prefers_dyslexic_font: profile.prefersDyslexicFont,
       prefers_high_contrast: profile.prefersHighContrast,
