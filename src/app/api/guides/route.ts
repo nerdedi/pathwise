@@ -1,5 +1,6 @@
+import { normalizeCollaborators } from "@/lib/collaboration";
 import { createClient } from "@/lib/supabase/server";
-import type { Itinerary, SharedCollaborator } from "@/types/itinerary";
+import type { Itinerary } from "@/types/itinerary";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -18,29 +19,6 @@ const SaveGuideSchema = z.object({
     }),
   }).passthrough(),
 });
-
-const normalizeCollaborators = (itinerary: Itinerary) => {
-  const fromStructured = (itinerary.sharedWith ?? [])
-    .map((item): SharedCollaborator | null => {
-      if (!item?.email || typeof item.email !== "string") return null;
-      const email = item.email.trim().toLowerCase();
-      if (!email) return null;
-
-      return {
-        email,
-        role: item.role === "viewer" ? "viewer" : "editor",
-      };
-    })
-    .filter(Boolean) as SharedCollaborator[];
-
-  if (fromStructured.length > 0) return fromStructured;
-
-  return (itinerary.sharedWithEmails ?? [])
-    .filter((email): email is string => typeof email === "string")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean)
-    .map((email) => ({ email, role: "editor" as const }));
-};
 
 export async function GET() {
   try {
@@ -85,10 +63,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { itinerary } = SaveGuideSchema.parse(body);
     const normalizedCollaborators = normalizeCollaborators(itinerary as Itinerary);
+    const nowIso = new Date().toISOString();
     const normalizedItinerary: Itinerary = {
       ...(itinerary as Itinerary),
       sharedWith: normalizedCollaborators,
       sharedWithEmails: normalizedCollaborators.map((item) => item.email),
+      lastEditedAt: nowIso,
+      lastEditedByEmail: user.email?.toLowerCase(),
     };
 
     const { error } = await supabase.from("itineraries").upsert(

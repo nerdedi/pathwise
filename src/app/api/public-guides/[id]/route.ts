@@ -1,3 +1,4 @@
+import { sanitizeItineraryForAccess } from "@/lib/collaboration";
 import { createClient } from "@/lib/supabase/server";
 import type { Itinerary } from "@/types/itinerary";
 import { NextRequest, NextResponse } from "next/server";
@@ -21,13 +22,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Guide not found" }, { status: 404 });
     }
 
-    const itinerary = data.itinerary_json as Itinerary;
-    const {
-      privateNotes: _privateNotes,
-      sharedWith: _sharedWith,
-      sharedWithEmails: _sharedWithEmails,
-      ...publicItinerary
-    } = itinerary;
+    const publicItinerary = sanitizeItineraryForAccess(data.itinerary_json as Itinerary, false);
 
     return NextResponse.json({ itinerary: publicItinerary });
   } catch (err) {

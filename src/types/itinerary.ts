@@ -138,5 +138,8 @@ export interface Itinerary {
   userId?: string;
   sharedWith?: SharedCollaborator[];
   sharedWithEmails?: string[];
+  lockedSectionIds?: string[];
   privateNotes?: string;
+  lastEditedAt?: string;
+  lastEditedByEmail?: string;
 }

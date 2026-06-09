@@ -2,9 +2,13 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+    normalizeCollaborators,
+    normalizeLockedSectionIds,
+} from "@/lib/collaboration";
 import type { WeatherDay } from "@/lib/weather";
 import { getWeatherPackingTips } from "@/lib/weather";
-import type { CollaborationRole, Itinerary, SharedCollaborator } from "@/types/itinerary";
+import type { CollaborationRole, Itinerary } from "@/types/itinerary";
 import {
     BookOpen,
     ChevronDown,
@@ -47,39 +51,23 @@ type CommunityEntry = {
   created_at: string;
 };
 
-const normalizeCollaborators = (itinerary: Itinerary): SharedCollaborator[] => {
-  const fromStructured = (itinerary.sharedWith ?? [])
-    .map((item): SharedCollaborator | null => {
-      if (!item?.email || typeof item.email !== "string") return null;
-      const email = item.email.trim().toLowerCase();
-      if (!email) return null;
-
-      return {
-        email,
-        role: item.role === "viewer" ? "viewer" : "editor",
-      };
-    })
-    .filter(Boolean) as SharedCollaborator[];
-
-  if (fromStructured.length > 0) {
-    return fromStructured;
-  }
-
-  return (itinerary.sharedWithEmails ?? [])
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean)
-    .map((email) => ({ email, role: "editor" as const }));
-};
-
 function SectionCard({
   section,
   editable,
+  readOnlyReason,
+  lockable,
+  locked,
+  onToggleLock,
   onUpdate,
   onRegenerate,
   regenerating,
 }: {
   section: Itinerary["sections"][0];
   editable?: boolean;
+  readOnlyReason?: string;
+  lockable?: boolean;
+  locked?: boolean;
+  onToggleLock?: (locked: boolean) => void;
   onUpdate?: (patch: Partial<Itinerary["sections"][0]>) => void;
   onRegenerate?: () => void;
   regenerating?: boolean;
@@ -111,6 +99,26 @@ function SectionCard({
 
       {open && (
         <CardContent className="pt-0">
+          {lockable && (
+            <div className="mb-3 flex items-center justify-between rounded-lg border border-sage-100 bg-sage-50 px-3 py-2">
+              <p className="text-xs text-sage-600">Lock this section for collaborators</p>
+              <label className="inline-flex items-center gap-2 text-xs text-sage-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(locked)}
+                  onChange={(e) => onToggleLock?.(e.target.checked)}
+                />
+                Locked
+              </label>
+            </div>
+          )}
+
+          {readOnlyReason && (
+            <p className="mb-3 text-xs text-warm-700 bg-warm-50 border border-warm-200 rounded-lg px-3 py-2">
+              {readOnlyReason}
+            </p>
+          )}
+
           {editable ? (
             <div className="space-y-3">
               <div className="flex justify-end">
@@ -198,6 +206,7 @@ export default function ItineraryView({
 
   const venue = draftItinerary.venueData;
   const collaborators = normalizeCollaborators(draftItinerary);
+  const lockedSectionIds = normalizeLockedSectionIds(draftItinerary.lockedSectionIds);
   const weatherPackingTips = draftItinerary.weather
     ? getWeatherPackingTips(draftItinerary.weather as unknown as WeatherDay)
     : [];
@@ -224,12 +233,29 @@ export default function ItineraryView({
     }));
   };
 
+  const toggleSectionLock = (sectionId: string, locked: boolean) => {
+    setDraftItinerary((prev) => {
+      const current = new Set(normalizeLockedSectionIds(prev.lockedSectionIds));
+      if (locked) {
+        current.add(sectionId);
+      } else {
+        current.delete(sectionId);
+      }
+
+      return {
+        ...prev,
+        lockedSectionIds: Array.from(current),
+      };
+    });
+  };
+
   const persistItinerary = async (nextItinerary: Itinerary, successMessage = "Saved to your account.") => {
     const normalizedCollaborators = normalizeCollaborators(nextItinerary);
     const normalizedItinerary: Itinerary = {
       ...nextItinerary,
       sharedWith: normalizedCollaborators,
       sharedWithEmails: normalizedCollaborators.map((item) => item.email),
+      lockedSectionIds: normalizeLockedSectionIds(nextItinerary.lockedSectionIds),
       privateNotes: canManageCollaborators ? privateNotesDraft : undefined,
     };
 
@@ -421,6 +447,12 @@ export default function ItineraryView({
                 Read-only access: ask the guide owner for edit permissions.
               </p>
             )}
+            {draftItinerary.lastEditedAt && (
+              <p className="text-xs text-sage-500 mt-1">
+                Last updated {new Date(draftItinerary.lastEditedAt).toLocaleString()}
+                {draftItinerary.lastEditedByEmail ? ` by ${draftItinerary.lastEditedByEmail}` : ""}
+              </p>
+            )}
           </div>
           <div className="flex gap-2 flex-wrap no-print">
             {allowEditing && (
@@ -519,16 +551,33 @@ export default function ItineraryView({
         )}
 
         {/* Itinerary sections */}
-        {draftItinerary.sections.map((section) => (
-          <SectionCard
-            key={section.id}
-            section={section}
-            editable={allowEditing && editMode}
-            onUpdate={(patch) => updateSection(section.id, patch)}
-            onRegenerate={() => regenerateSection(section.id)}
-            regenerating={allowEditing && regeneratingSectionId === section.id}
-          />
-        ))}
+        {draftItinerary.sections.map((section) => {
+          const isLockedForCollaborator =
+            !canManageCollaborators && lockedSectionIds.includes(section.id);
+
+          return (
+            <SectionCard
+              key={section.id}
+              section={section}
+              editable={allowEditing && editMode && !isLockedForCollaborator}
+              readOnlyReason={
+                isLockedForCollaborator
+                  ? "This section is locked by the guide owner."
+                  : undefined
+              }
+              lockable={allowEditing && editMode && canManageCollaborators}
+              locked={lockedSectionIds.includes(section.id)}
+              onToggleLock={(locked) => toggleSectionLock(section.id, locked)}
+              onUpdate={(patch) => updateSection(section.id, patch)}
+              onRegenerate={() => regenerateSection(section.id)}
+              regenerating={
+                allowEditing &&
+                regeneratingSectionId === section.id &&
+                !isLockedForCollaborator
+              }
+            />
+          );
+        })}
 
         {canManageCollaborators && (
           <Card>

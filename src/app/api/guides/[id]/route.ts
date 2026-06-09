@@ -1,6 +1,12 @@
+import {
+    getCollaboratorRole,
+    mergeSectionsRespectingLocks,
+    normalizeCollaborators,
+    sanitizeItineraryForAccess,
+} from "@/lib/collaboration";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import type { Itinerary, SharedCollaborator } from "@/types/itinerary";
+import type { Itinerary } from "@/types/itinerary";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -24,53 +30,6 @@ const UpdateGuideSchema = z.object({
     .passthrough(),
 });
 
-const normalizeCollaborators = (itinerary: Itinerary | null | undefined) => {
-  const fromStructured = (itinerary?.sharedWith ?? [])
-    .map((item): SharedCollaborator | null => {
-      if (!item?.email || typeof item.email !== "string") return null;
-      const email = item.email.trim().toLowerCase();
-      if (!email) return null;
-
-      return {
-        email,
-        role: item.role === "viewer" ? "viewer" : "editor",
-      };
-    })
-    .filter(Boolean) as SharedCollaborator[];
-
-  if (fromStructured.length > 0) {
-    return fromStructured;
-  }
-
-  return (itinerary?.sharedWithEmails ?? [])
-    .filter((email): email is string => typeof email === "string")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean)
-    .map((email) => ({ email, role: "editor" as const }));
-};
-
-const findCollaboratorRole = (itinerary: Itinerary | null | undefined, email: string) => {
-  const collaborators = normalizeCollaborators(itinerary);
-  const match = collaborators.find((collaborator) => collaborator.email === email.toLowerCase());
-  return match?.role;
-};
-
-const sanitizeForAccess = (itinerary: Itinerary, isOwner: boolean) => {
-  const normalizedCollaborators = normalizeCollaborators(itinerary);
-  const base: Itinerary = {
-    ...itinerary,
-    sharedWith: normalizedCollaborators,
-    sharedWithEmails: normalizedCollaborators.map((item) => item.email),
-  };
-
-  if (isOwner) {
-    return base;
-  }
-
-  const { privateNotes: _privateNotes, ...withoutPrivateNotes } = base;
-  return withoutPrivateNotes;
-};
-
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const supabase = await createClient();
@@ -92,7 +51,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     if (error) throw error;
 
     if (data?.itinerary_json) {
-      const itinerary = sanitizeForAccess(data.itinerary_json as Itinerary, true);
+      const itinerary = sanitizeItineraryForAccess(data.itinerary_json as Itinerary, true);
       return NextResponse.json({
         itinerary,
         permissions: {
@@ -113,13 +72,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
       if (sharedError) throw sharedError;
 
-      const sharedRole = findCollaboratorRole(
+      const sharedRole = getCollaboratorRole(
         sharedGuide?.itinerary_json as Itinerary | null,
         user.email.toLowerCase()
       );
 
       if (sharedGuide?.itinerary_json && sharedRole) {
-        const itinerary = sanitizeForAccess(sharedGuide.itinerary_json as Itinerary, false);
+        const itinerary = sanitizeItineraryForAccess(sharedGuide.itinerary_json as Itinerary, false);
         return NextResponse.json({
           itinerary,
           permissions: {
@@ -163,10 +122,13 @@ export async function PUT(req: NextRequest, { params }: Params) {
     }
 
     const normalizedCollaborators = normalizeCollaborators(itinerary as Itinerary);
+    const nowIso = new Date().toISOString();
     const ownerReadyItinerary: Itinerary = {
       ...(itinerary as Itinerary),
       sharedWith: normalizedCollaborators,
       sharedWithEmails: normalizedCollaborators.map((item) => item.email),
+      lastEditedAt: nowIso,
+      lastEditedByEmail: user.email?.toLowerCase(),
     };
 
     const { data: ownerRows, error } = await supabase
@@ -204,7 +166,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       if (sharedError) throw sharedError;
 
       const existingShared = sharedGuide?.itinerary_json as Itinerary | null;
-      const collaboratorRole = findCollaboratorRole(existingShared, user.email.toLowerCase());
+      const collaboratorRole = getCollaboratorRole(existingShared, user.email.toLowerCase());
 
       if (!existingShared || !collaboratorRole) {
         return NextResponse.json({ error: "Guide not found" }, { status: 404 });
@@ -220,9 +182,13 @@ export async function PUT(req: NextRequest, { params }: Params) {
       const protectedCollaborators = normalizeCollaborators(existingShared);
       const collaboratorSafeUpdate: Itinerary = {
         ...(itinerary as Itinerary),
+        sections: mergeSectionsRespectingLocks(existingShared, itinerary as Itinerary),
+        lockedSectionIds: existingShared.lockedSectionIds,
         privateNotes: existingShared.privateNotes,
         sharedWith: protectedCollaborators,
         sharedWithEmails: protectedCollaborators.map((item) => item.email),
+        lastEditedAt: nowIso,
+        lastEditedByEmail: user.email.toLowerCase(),
       };
 
       const { error: collaboratorError } = await admin
