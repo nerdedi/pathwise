@@ -1,6 +1,12 @@
 import type { TransportPlan } from "@/types/itinerary";
 import { describe, expect, it } from "vitest";
-import { buildTransportSupportCards } from "./transport-support";
+import {
+  buildAlternativeRouteOptions,
+  buildPostTransitWalkingGuidance,
+  buildPreTripAlerts,
+  buildTransportSupportCards,
+  buildTripOptimisationTips,
+} from "./transport-support";
 
 const makePlan = (overrides: Partial<TransportPlan> = {}): TransportPlan => ({
   fromSuburb: "Parramatta",
@@ -80,5 +86,38 @@ describe("buildTransportSupportCards", () => {
     );
 
     expect(cards.find((card) => card.id === "live-eta")?.detail).toContain("delayed");
+  });
+
+  it("builds pre-trip alerts with station guidance", () => {
+    const alerts = buildPreTripAlerts(makePlan(), "Museum of Sydney");
+
+    expect(alerts).toHaveLength(3);
+    expect(alerts[0].id).toBe("pack-bag");
+    expect(alerts[2].detail).toContain("Parramatta Station");
+  });
+
+  it("returns disruption alternatives", () => {
+    const alternatives = buildAlternativeRouteOptions(makePlan());
+
+    expect(alternatives.length).toBeGreaterThanOrEqual(2);
+    expect(alternatives.some((item) => item.id === "reroute-now")).toBe(true);
+  });
+
+  it("builds post-transit walking guidance", () => {
+    const walking = buildPostTransitWalkingGuidance(makePlan(), "to", "Museum of Sydney");
+
+    expect(walking[0].title).toContain("walking");
+    expect(walking.length).toBeGreaterThan(1);
+  });
+
+  it("builds optimisation insights from trip memories", () => {
+    const tips = buildTripOptimisationTips(makePlan(), [
+      { recordedAt: "2026-06-01", stressScore: 8, crowdingLevel: "high" },
+      { recordedAt: "2026-06-02", stressScore: 7, crowdingLevel: "high" },
+      { recordedAt: "2026-06-03", stressScore: 5, crowdingLevel: "medium" },
+    ]);
+
+    expect(tips.some((tip) => tip.id === "stress-trend")).toBe(true);
+    expect(tips.some((tip) => tip.id.includes("optimize"))).toBe(true);
   });
 });
