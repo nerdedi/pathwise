@@ -10,15 +10,17 @@ import {
     ChevronDown,
     ChevronUp,
     Download,
-  Edit3,
+    Edit3,
+    Loader2,
     Mail,
     MapPin,
     Phone,
     Printer,
-  Save,
+    RefreshCw,
+    Save,
 } from "lucide-react";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import AffirmationCard from "./affirmation-card";
 import OverwhelmedPlan from "./overwhelmed-plan";
@@ -30,16 +32,31 @@ import WeatherCard from "./weather-card";
 
 interface ItineraryViewProps {
   itinerary: Itinerary;
+  allowEditing?: boolean;
 }
+
+type CommunityEntry = {
+  id: string;
+  overall_rating: number | null;
+  notes: string | null;
+  tips: string | null;
+  visit_date: string | null;
+  helpful_count: number | null;
+  created_at: string;
+};
 
 function SectionCard({
   section,
   editable,
   onUpdate,
+  onRegenerate,
+  regenerating,
 }: {
   section: Itinerary["sections"][0];
   editable?: boolean;
   onUpdate?: (patch: Partial<Itinerary["sections"][0]>) => void;
+  onRegenerate?: () => void;
+  regenerating?: boolean;
 }) {
   const [open, setOpen] = useState(!section.isExpandable);
 
@@ -70,6 +87,23 @@ function SectionCard({
         <CardContent className="pt-0">
           {editable ? (
             <div className="space-y-3">
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={onRegenerate}
+                  disabled={regenerating}
+                  className="gap-1.5"
+                >
+                  {regenerating ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
+                  Regenerate section
+                </Button>
+              </div>
               <textarea
                 value={section.content}
                 onChange={(e) => onUpdate?.({ content: e.target.value })}
@@ -114,13 +148,20 @@ function SectionCard({
   );
 }
 
-export default function ItineraryView({ itinerary }: ItineraryViewProps) {
+export default function ItineraryView({ itinerary, allowEditing = true }: ItineraryViewProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
   const [draftItinerary, setDraftItinerary] = useState<Itinerary>(itinerary);
   const [editMode, setEditMode] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [regeneratingSectionId, setRegeneratingSectionId] = useState<string | null>(null);
+  const [communityEntries, setCommunityEntries] = useState<CommunityEntry[]>([]);
+  const [communityLoading, setCommunityLoading] = useState(true);
+  const [communityRating, setCommunityRating] = useState(5);
+  const [communityNotes, setCommunityNotes] = useState("");
+  const [communityTips, setCommunityTips] = useState("");
+  const [submittingCommunity, setSubmittingCommunity] = useState(false);
 
   const venue = draftItinerary.venueData;
   const weatherPackingTips = draftItinerary.weather
@@ -136,37 +177,127 @@ export default function ItineraryView({ itinerary }: ItineraryViewProps) {
     }));
   };
 
-  const saveChanges = async () => {
-    setSaving(true);
-    setSaveMessage("");
-
-    // Always persist local cache
+  const persistItinerary = async (nextItinerary: Itinerary, successMessage = "Saved to your account.") => {
     sessionStorage.setItem(
-      `pathwise_itinerary_${draftItinerary.id}`,
-      JSON.stringify(draftItinerary)
+      `pathwise_itinerary_${nextItinerary.id}`,
+      JSON.stringify(nextItinerary)
     );
 
     try {
-      const res = await fetch(`/api/guides/${draftItinerary.id}`, {
+      const res = await fetch(`/api/guides/${nextItinerary.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itinerary: draftItinerary }),
+        body: JSON.stringify({ itinerary: nextItinerary }),
       });
 
       if (res.ok) {
-        setSaveMessage("Saved to your account.");
+        setSaveMessage(successMessage);
       } else if (res.status === 401) {
-        setSaveMessage("Saved on this device only (sign in to sync). ");
+        setSaveMessage("Saved on this device only (sign in to sync).");
       } else {
         setSaveMessage("Saved on this device. Cloud save failed.");
       }
     } catch {
       setSaveMessage("Saved on this device. Cloud save failed.");
+    }
+  };
+
+  const saveChanges = async () => {
+    setSaving(true);
+    setSaveMessage("");
+
+    try {
+      await persistItinerary(draftItinerary);
     } finally {
       setSaving(false);
       setEditMode(false);
     }
   };
+
+  const regenerateSection = async (sectionId: string) => {
+    setRegeneratingSectionId(sectionId);
+    setSaveMessage("");
+
+    try {
+      const res = await fetch("/api/itinerary/regenerate-section", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary: draftItinerary, sectionId }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to regenerate section");
+      }
+
+      const data = await res.json();
+      const nextItinerary = {
+        ...draftItinerary,
+        sections: draftItinerary.sections.map((section) =>
+          section.id === sectionId ? data.section : section
+        ),
+      };
+
+      setDraftItinerary(nextItinerary);
+      await persistItinerary(nextItinerary, "Section regenerated and saved.");
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : "Failed to regenerate section.");
+    } finally {
+      setRegeneratingSectionId(null);
+    }
+  };
+
+  const loadCommunity = useCallback(async () => {
+    try {
+      setCommunityLoading(true);
+      const res = await fetch(`/api/community?venueUrl=${encodeURIComponent(venue.url)}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error("Failed to load community notes");
+      const data = await res.json();
+      setCommunityEntries((data.entries ?? []) as CommunityEntry[]);
+    } catch {
+      setCommunityEntries([]);
+    } finally {
+      setCommunityLoading(false);
+    }
+  }, [venue.url]);
+
+  const submitCommunity = async () => {
+    setSubmittingCommunity(true);
+    try {
+      const res = await fetch("/api/community", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          venueUrl: venue.url,
+          venueName: venue.name,
+          venueSuburb: venue.suburb,
+          overallRating: communityRating,
+          notes: communityNotes || undefined,
+          tips: communityTips || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to save community note");
+      }
+
+      setCommunityNotes("");
+      setCommunityTips("");
+      setSaveMessage("Community note shared.");
+      await loadCommunity();
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : "Failed to save community note.");
+    } finally {
+      setSubmittingCommunity(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadCommunity();
+  }, [loadCommunity]);
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -185,20 +316,24 @@ export default function ItineraryView({ itinerary }: ItineraryViewProps) {
             )}
           </div>
           <div className="flex gap-2 flex-wrap no-print">
-            <Button
-              variant={editMode ? "default" : "outline"}
-              size="sm"
-              onClick={() => setEditMode((v) => !v)}
-              className="gap-1.5"
-            >
-              <Edit3 className="w-3.5 h-3.5" />
-              {editMode ? "Cancel edit" : "Edit sections"}
-            </Button>
-            {editMode && (
-              <Button size="sm" onClick={saveChanges} disabled={saving} className="gap-1.5">
-                <Save className="w-3.5 h-3.5" />
-                {saving ? "Saving…" : "Save changes"}
-              </Button>
+            {allowEditing && (
+              <>
+                <Button
+                  variant={editMode ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setEditMode((v) => !v)}
+                  className="gap-1.5"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  {editMode ? "Cancel edit" : "Edit sections"}
+                </Button>
+                {editMode && (
+                  <Button size="sm" onClick={saveChanges} disabled={saving} className="gap-1.5">
+                    <Save className="w-3.5 h-3.5" />
+                    {saving ? "Saving…" : "Save changes"}
+                  </Button>
+                )}
+              </>
             )}
             <Button
               variant="outline"
@@ -281,10 +416,77 @@ export default function ItineraryView({ itinerary }: ItineraryViewProps) {
           <SectionCard
             key={section.id}
             section={section}
-            editable={editMode}
+            editable={allowEditing && editMode}
             onUpdate={(patch) => updateSection(section.id, patch)}
+            onRegenerate={() => regenerateSection(section.id)}
+            regenerating={allowEditing && regeneratingSectionId === section.id}
           />
         ))}
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">🫶 Community tips</CardTitle>
+            <p className="text-xs text-sage-500 mt-1">
+              Notes from other visitors can help you know what to expect.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-0">
+            {communityLoading ? (
+              <p className="text-sm text-sage-500">Loading community notes…</p>
+            ) : communityEntries.length === 0 ? (
+              <p className="text-sm text-sage-500">No community notes yet for this venue.</p>
+            ) : (
+              <div className="space-y-3">
+                {communityEntries.map((entry) => (
+                  <div key={entry.id} className="rounded-xl border border-sage-100 p-3 bg-sage-50/50">
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                      <span className="text-xs font-medium text-sage-700">
+                        Overall rating: {entry.overall_rating ?? "—"}/10
+                      </span>
+                      <span className="text-xs text-sage-400">
+                        {new Date(entry.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    {entry.notes && <p className="text-sm text-sage-700">{entry.notes}</p>}
+                    {entry.tips && <p className="text-sm text-sage-600 mt-1">Tip: {entry.tips}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {allowEditing && (
+              <div className="border-t border-sage-100 pt-4 space-y-3">
+                <p className="text-sm font-medium text-sage-800">Share your own note</p>
+                <label className="block text-xs text-sage-500">
+                  Overall sensory rating (1 calm – 10 intense)
+                </label>
+                <input
+                  type="range"
+                  min={1}
+                  max={10}
+                  value={communityRating}
+                  onChange={(e) => setCommunityRating(Number(e.target.value))}
+                  className="w-full"
+                />
+                <textarea
+                  value={communityNotes}
+                  onChange={(e) => setCommunityNotes(e.target.value)}
+                  placeholder="What stood out about the environment?"
+                  className="w-full min-h-20 text-sm text-sage-700 border border-sage-200 rounded-xl p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+                />
+                <textarea
+                  value={communityTips}
+                  onChange={(e) => setCommunityTips(e.target.value)}
+                  placeholder="Any tip that would help the next visitor?"
+                  className="w-full min-h-20 text-sm text-sage-700 border border-sage-200 rounded-xl p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+                />
+                <Button onClick={submitCommunity} disabled={submittingCommunity} className="gap-2">
+                  {submittingCommunity ? "Sharing…" : "Share community note"}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Weather */}
         {draftItinerary.weather && (

@@ -31,7 +31,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from("itineraries")
-      .select("id, venue_name, venue_suburb, visit_date, risk_score, created_at")
+      .select("id, venue_name, venue_suburb, visit_date, risk_score, created_at, is_public")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 

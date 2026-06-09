@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
-import { Calendar, LogOut, MapPin, Save, Search, Trash2 } from "lucide-react";
+import { Calendar, Copy, Globe, LogOut, MapPin, Save, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -14,6 +14,7 @@ type GuideSummary = {
   visit_date: string | null;
   risk_score: number | null;
   created_at: string;
+  is_public?: boolean;
 };
 
 export default function GuidesPage() {
@@ -27,6 +28,41 @@ export default function GuidesPage() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sharingId, setSharingId] = useState<string | null>(null);
+  const toggleShare = async (id: string, nextValue: boolean) => {
+    setSharingId(id);
+    try {
+      const res = await fetch(`/api/guides/${id}/visibility`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPublic: nextValue }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to update visibility");
+      }
+
+      setGuides((prev) =>
+        prev.map((guide) =>
+          guide.id === id ? { ...guide, is_public: nextValue } : guide
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update visibility");
+    } finally {
+      setSharingId(null);
+    }
+  };
+
+  const copyShareLink = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/shared/${id}`);
+    } catch {
+      setError("Failed to copy share link");
+    }
+  };
+
 
   const loadGuides = async () => {
     setLoading(true);
@@ -268,16 +304,41 @@ export default function GuidesPage() {
                         </div>
                       </Link>
 
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                        onClick={() => deleteGuide(guide.id)}
-                        disabled={deletingId === guide.id}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5"
+                          onClick={() => toggleShare(guide.id, !guide.is_public)}
+                          disabled={sharingId === guide.id}
+                        >
+                          <Globe className="w-3.5 h-3.5" />
+                          {guide.is_public ? "Unshare" : "Share"}
+                        </Button>
+                        {guide.is_public && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5"
+                            onClick={() => copyShareLink(guide.id)}
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            Copy link
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                          onClick={() => deleteGuide(guide.id)}
+                          disabled={deletingId === guide.id}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
