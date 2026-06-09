@@ -7,17 +7,19 @@ test.describe("public smoke routes", () => {
     await expect(
       page.getByRole("heading", { name: /Know what to expect/i })
     ).toBeVisible();
-    await expect(page.getByRole("link", { name: /Create new profile/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Log in/i }).first()).toBeVisible();
+    await expect(
+      page.getByRole("navigation").getByRole("link", { name: /Create new profile/i })
+    ).toBeVisible();
+    await expect(page.getByRole("navigation").getByRole("link", { name: /Log in/i })).toBeVisible();
   });
 
   test("onboarding page loads its first step", async ({ page }) => {
     await page.goto("/onboarding");
 
     await expect(
-      page.getByRole("heading", { name: /Welcome to Pathwise/i })
+      page.getByRole("heading", { name: /Create your Pathwise profile|Welcome to Pathwise/i })
     ).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Your senses/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /skip straight to planning/i })).toBeVisible();
   });
 
   test("plan page renders the venue URL form", async ({ page }) => {
