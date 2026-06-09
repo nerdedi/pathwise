@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import type { Itinerary, SharedCollaborator } from "@/types/itinerary";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -17,6 +18,29 @@ const SaveGuideSchema = z.object({
     }),
   }).passthrough(),
 });
+
+const normalizeCollaborators = (itinerary: Itinerary) => {
+  const fromStructured = (itinerary.sharedWith ?? [])
+    .map((item): SharedCollaborator | null => {
+      if (!item?.email || typeof item.email !== "string") return null;
+      const email = item.email.trim().toLowerCase();
+      if (!email) return null;
+
+      return {
+        email,
+        role: item.role === "viewer" ? "viewer" : "editor",
+      };
+    })
+    .filter(Boolean) as SharedCollaborator[];
+
+  if (fromStructured.length > 0) return fromStructured;
+
+  return (itinerary.sharedWithEmails ?? [])
+    .filter((email): email is string => typeof email === "string")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean)
+    .map((email) => ({ email, role: "editor" as const }));
+};
 
 export async function GET() {
   try {
@@ -60,21 +84,27 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { itinerary } = SaveGuideSchema.parse(body);
+    const normalizedCollaborators = normalizeCollaborators(itinerary as Itinerary);
+    const normalizedItinerary: Itinerary = {
+      ...(itinerary as Itinerary),
+      sharedWith: normalizedCollaborators,
+      sharedWithEmails: normalizedCollaborators.map((item) => item.email),
+    };
 
     const { error } = await supabase.from("itineraries").upsert(
       {
-        id: itinerary.id,
+        id: normalizedItinerary.id,
         user_id: user.id,
-        venue_name: itinerary.venueData.name,
-        venue_url: itinerary.venueData.url,
-        venue_address: itinerary.venueData.address,
-        venue_suburb: itinerary.venueData.suburb,
-        visit_date: itinerary.visitDate,
-        from_suburb: itinerary.fromSuburb,
-        itinerary_json: itinerary,
-        risk_score: itinerary.riskScore,
-        overall_sensory_rating: itinerary.venueData.overallSensoryRating,
-        shared_with_emails: itinerary.sharedWithEmails ?? [],
+        venue_name: normalizedItinerary.venueData.name,
+        venue_url: normalizedItinerary.venueData.url,
+        venue_address: normalizedItinerary.venueData.address,
+        venue_suburb: normalizedItinerary.venueData.suburb,
+        visit_date: normalizedItinerary.visitDate,
+        from_suburb: normalizedItinerary.fromSuburb,
+        itinerary_json: normalizedItinerary,
+        risk_score: normalizedItinerary.riskScore,
+        overall_sensory_rating: normalizedItinerary.venueData.overallSensoryRating,
+        shared_with_emails: normalizedItinerary.sharedWithEmails ?? [],
       },
       { onConflict: "id" }
     );

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { WeatherDay } from "@/lib/weather";
 import { getWeatherPackingTips } from "@/lib/weather";
-import type { Itinerary } from "@/types/itinerary";
+import type { CollaborationRole, Itinerary, SharedCollaborator } from "@/types/itinerary";
 import {
     BookOpen,
     ChevronDown,
@@ -34,6 +34,7 @@ import WeatherCard from "./weather-card";
 interface ItineraryViewProps {
   itinerary: Itinerary;
   allowEditing?: boolean;
+  canManageCollaborators?: boolean;
 }
 
 type CommunityEntry = {
@@ -44,6 +45,30 @@ type CommunityEntry = {
   visit_date: string | null;
   helpful_count: number | null;
   created_at: string;
+};
+
+const normalizeCollaborators = (itinerary: Itinerary): SharedCollaborator[] => {
+  const fromStructured = (itinerary.sharedWith ?? [])
+    .map((item): SharedCollaborator | null => {
+      if (!item?.email || typeof item.email !== "string") return null;
+      const email = item.email.trim().toLowerCase();
+      if (!email) return null;
+
+      return {
+        email,
+        role: item.role === "viewer" ? "viewer" : "editor",
+      };
+    })
+    .filter(Boolean) as SharedCollaborator[];
+
+  if (fromStructured.length > 0) {
+    return fromStructured;
+  }
+
+  return (itinerary.sharedWithEmails ?? [])
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean)
+    .map((email) => ({ email, role: "editor" as const }));
 };
 
 function SectionCard({
@@ -149,7 +174,11 @@ function SectionCard({
   );
 }
 
-export default function ItineraryView({ itinerary, allowEditing = true }: ItineraryViewProps) {
+export default function ItineraryView({
+  itinerary,
+  allowEditing = true,
+  canManageCollaborators = allowEditing,
+}: ItineraryViewProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
   const [draftItinerary, setDraftItinerary] = useState<Itinerary>(itinerary);
@@ -164,11 +193,27 @@ export default function ItineraryView({ itinerary, allowEditing = true }: Itiner
   const [communityTips, setCommunityTips] = useState("");
   const [submittingCommunity, setSubmittingCommunity] = useState(false);
   const [shareEmail, setShareEmail] = useState("");
+  const [shareRole, setShareRole] = useState<CollaborationRole>("viewer");
+  const [privateNotesDraft, setPrivateNotesDraft] = useState(itinerary.privateNotes ?? "");
 
   const venue = draftItinerary.venueData;
+  const collaborators = normalizeCollaborators(draftItinerary);
   const weatherPackingTips = draftItinerary.weather
     ? getWeatherPackingTips(draftItinerary.weather as unknown as WeatherDay)
     : [];
+
+  useEffect(() => {
+    setDraftItinerary(itinerary);
+    setPrivateNotesDraft(itinerary.privateNotes ?? "");
+  }, [itinerary]);
+
+  useEffect(() => {
+    if (!canManageCollaborators) return;
+    setDraftItinerary((prev) => ({
+      ...prev,
+      privateNotes: privateNotesDraft,
+    }));
+  }, [privateNotesDraft, canManageCollaborators]);
 
   const updateSection = (sectionId: string, patch: Partial<Itinerary["sections"][0]>) => {
     setDraftItinerary((prev) => ({
@@ -180,16 +225,24 @@ export default function ItineraryView({ itinerary, allowEditing = true }: Itiner
   };
 
   const persistItinerary = async (nextItinerary: Itinerary, successMessage = "Saved to your account.") => {
+    const normalizedCollaborators = normalizeCollaborators(nextItinerary);
+    const normalizedItinerary: Itinerary = {
+      ...nextItinerary,
+      sharedWith: normalizedCollaborators,
+      sharedWithEmails: normalizedCollaborators.map((item) => item.email),
+      privateNotes: canManageCollaborators ? privateNotesDraft : undefined,
+    };
+
     sessionStorage.setItem(
-      `pathwise_itinerary_${nextItinerary.id}`,
-      JSON.stringify(nextItinerary)
+      `pathwise_itinerary_${normalizedItinerary.id}`,
+      JSON.stringify(normalizedItinerary)
     );
 
     try {
-      const res = await fetch(`/api/guides/${nextItinerary.id}`, {
+      const res = await fetch(`/api/guides/${normalizedItinerary.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itinerary: nextItinerary }),
+        body: JSON.stringify({ itinerary: normalizedItinerary }),
       });
 
       if (res.ok) {
@@ -256,23 +309,42 @@ export default function ItineraryView({ itinerary, allowEditing = true }: Itiner
       return;
     }
 
-    if ((draftItinerary.sharedWithEmails ?? []).includes(email)) {
+    if (collaborators.some((item) => item.email === email)) {
       setSaveMessage("That email already has access.");
       return;
     }
 
     setDraftItinerary((prev) => ({
       ...prev,
-      sharedWithEmails: [...(prev.sharedWithEmails ?? []), email],
+      sharedWith: [...normalizeCollaborators(prev), { email, role: shareRole }],
+      sharedWithEmails: [...normalizeCollaborators(prev).map((item) => item.email), email],
     }));
     setShareEmail("");
+    setShareRole("viewer");
     setSaveMessage("Collaborator added. Save changes to sync.");
+  };
+
+  const updateSharedRole = (email: string, role: CollaborationRole) => {
+    setDraftItinerary((prev) => {
+      const updated = normalizeCollaborators(prev).map((item) =>
+        item.email === email ? { ...item, role } : item
+      );
+      return {
+        ...prev,
+        sharedWith: updated,
+        sharedWithEmails: updated.map((item) => item.email),
+      };
+    });
+    setSaveMessage("Collaborator role updated. Save changes to sync.");
   };
 
   const removeSharedEmail = (email: string) => {
     setDraftItinerary((prev) => ({
       ...prev,
-      sharedWithEmails: (prev.sharedWithEmails ?? []).filter((item) => item !== email),
+      sharedWith: normalizeCollaborators(prev).filter((item) => item.email !== email),
+      sharedWithEmails: normalizeCollaborators(prev)
+        .filter((item) => item.email !== email)
+        .map((item) => item.email),
     }));
     setSaveMessage("Collaborator removed. Save changes to sync.");
   };
@@ -343,6 +415,11 @@ export default function ItineraryView({ itinerary, allowEditing = true }: Itiner
             <p className="text-sage-600 mt-1 text-sm">{venue.address}</p>
             {saveMessage && (
               <p className="text-xs text-sage-600 mt-1">{saveMessage}</p>
+            )}
+            {!allowEditing && (
+              <p className="text-xs text-sage-500 mt-1">
+                Read-only access: ask the guide owner for edit permissions.
+              </p>
             )}
           </div>
           <div className="flex gap-2 flex-wrap no-print">
@@ -453,7 +530,7 @@ export default function ItineraryView({ itinerary, allowEditing = true }: Itiner
           />
         ))}
 
-        {allowEditing && (
+        {canManageCollaborators && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">🤝 Shared planning</CardTitle>
@@ -462,19 +539,33 @@ export default function ItineraryView({ itinerary, allowEditing = true }: Itiner
               </p>
             </CardHeader>
             <CardContent className="space-y-3 pt-0">
-              {draftItinerary.sharedWithEmails && draftItinerary.sharedWithEmails.length > 0 ? (
+              {collaborators.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
-                  {draftItinerary.sharedWithEmails.map((email) => (
+                  {collaborators.map((collaborator) => (
                     <span
-                      key={email}
+                      key={collaborator.email}
                       className="inline-flex items-center gap-2 rounded-full bg-sage-50 border border-sage-200 px-3 py-1 text-xs text-sage-700"
                     >
-                      {email}
+                      {collaborator.email}
+                      <select
+                        value={collaborator.role}
+                        onChange={(e) =>
+                          updateSharedRole(
+                            collaborator.email,
+                            e.target.value === "viewer" ? "viewer" : "editor"
+                          )
+                        }
+                        className="h-6 rounded-md border border-sage-200 bg-white px-1.5 text-[11px] text-sage-600"
+                        aria-label={`Role for ${collaborator.email}`}
+                      >
+                        <option value="viewer">Viewer</option>
+                        <option value="editor">Editor</option>
+                      </select>
                       <button
                         type="button"
-                        onClick={() => removeSharedEmail(email)}
+                        onClick={() => removeSharedEmail(collaborator.email)}
                         className="text-sage-500 hover:text-sage-700"
-                        aria-label={`Remove ${email}`}
+                        aria-label={`Remove ${collaborator.email}`}
                       >
                         ×
                       </button>
@@ -493,14 +584,44 @@ export default function ItineraryView({ itinerary, allowEditing = true }: Itiner
                   placeholder="assistant@example.com"
                   className="flex-1 h-10 rounded-xl border border-sage-200 px-3 text-sm bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
                 />
+                <select
+                  value={shareRole}
+                  onChange={(e) =>
+                    setShareRole(e.target.value === "editor" ? "editor" : "viewer")
+                  }
+                  className="h-10 rounded-xl border border-sage-200 px-2 text-sm bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+                  aria-label="Collaborator role"
+                >
+                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor</option>
+                </select>
                 <Button type="button" variant="outline" onClick={addSharedEmail}>
                   Add
                 </Button>
               </div>
 
               <p className="text-xs text-sage-500">
-                Shared people can coordinate the plan. Personal reflections should stay outside shared sections.
+                Viewers can read-only view. Editors can update shared sections. Private notes remain owner-only.
               </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {canManageCollaborators && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">🔒 Private notes</CardTitle>
+              <p className="text-xs text-sage-500 mt-1">
+                These notes are never shown on shared/public guides.
+              </p>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <textarea
+                value={privateNotesDraft}
+                onChange={(e) => setPrivateNotesDraft(e.target.value)}
+                placeholder="Example: Arrive 20 min early. Avoid platform 4 if crowded."
+                className="w-full min-h-24 text-sm text-sage-700 border border-sage-200 rounded-xl p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+              />
             </CardContent>
           </Card>
         )}

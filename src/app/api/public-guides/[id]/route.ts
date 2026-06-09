@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import type { Itinerary } from "@/types/itinerary";
 import { NextRequest, NextResponse } from "next/server";
 
 type Params = { params: { id: string } };
@@ -20,7 +21,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Guide not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ itinerary: data.itinerary_json });
+    const itinerary = data.itinerary_json as Itinerary;
+    const {
+      privateNotes: _privateNotes,
+      sharedWith: _sharedWith,
+      sharedWithEmails: _sharedWithEmails,
+      ...publicItinerary
+    } = itinerary;
+
+    return NextResponse.json({ itinerary: publicItinerary });
   } catch (err) {
     console.error("[/api/public-guides/:id GET]", err);
     return NextResponse.json(

@@ -1,6 +1,13 @@
 import type { SensoryProfile } from "./sensory-profile";
 import type { VenueData } from "./venue";
 
+export type CollaborationRole = "viewer" | "editor";
+
+export interface SharedCollaborator {
+  email: string;
+  role: CollaborationRole;
+}
+
 export interface TransportLeg {
   mode: "train" | "bus" | "light-rail" | "ferry" | "walk";
   from: string;
@@ -129,5 +136,7 @@ export interface Itinerary {
   // Meta
   generatedAt: string;
   userId?: string;
+  sharedWith?: SharedCollaborator[];
   sharedWithEmails?: string[];
+  privateNotes?: string;
 }

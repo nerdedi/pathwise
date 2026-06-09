@@ -4,14 +4,15 @@ import ItineraryView from "@/components/itinerary/itinerary-view";
 import type { Itinerary } from "@/types/itinerary";
 import { ArrowLeft, Loader2, MapPin } from "lucide-react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export default function ItineraryPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const [itinerary, setItinerary] = useState<Itinerary | null>(null);
   const [error, setError] = useState("");
+  const [canEdit, setCanEdit] = useState(true);
+  const [canManageCollaborators, setCanManageCollaborators] = useState(true);
 
   useEffect(() => {
     if (!params.id) return;
@@ -21,13 +22,14 @@ export default function ItineraryPage() {
         const stored = sessionStorage.getItem(`pathwise_itinerary_${params.id}`);
         if (stored) {
           setItinerary(JSON.parse(stored) as Itinerary);
-          return;
         }
 
         const res = await fetch(`/api/guides/${params.id}`, { cache: "no-store" });
         if (res.ok) {
           const data = await res.json();
           setItinerary(data.itinerary as Itinerary);
+          setCanEdit(Boolean(data.permissions?.canEdit ?? true));
+          setCanManageCollaborators(Boolean(data.permissions?.canManageCollaborators ?? true));
           sessionStorage.setItem(
             `pathwise_itinerary_${params.id}`,
             JSON.stringify(data.itinerary)
@@ -88,7 +90,11 @@ export default function ItineraryPage() {
         <div className="w-20" />
       </nav>
 
-      <ItineraryView itinerary={itinerary} />
+      <ItineraryView
+        itinerary={itinerary}
+        allowEditing={canEdit}
+        canManageCollaborators={canManageCollaborators}
+      />
     </div>
   );
 }
