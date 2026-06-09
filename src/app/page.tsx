@@ -99,17 +99,17 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-4">
             <Link
-              href="/guides"
+              href="/onboarding"
               className="text-sm text-sage-700 hover:text-sage-900"
             >
-              My guides
+              Create new profile
             </Link>
             <Link
-              href="/plan"
+              href="/guides"
               className="bg-sage-600 hover:bg-sage-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors focus-calm"
-              aria-label="Create your first venue guide"
+              aria-label="Log in to your saved guides"
             >
-              Get started
+              Log in
             </Link>
           </div>
         </div>
@@ -134,19 +134,28 @@ export default function HomePage() {
           your brain works.
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
+        <div className="flex flex-col sm:flex-row gap-4 justify-center mb-4">
           <Link
             href="/onboarding"
             className="inline-flex items-center justify-center gap-2 bg-sage-600 hover:bg-sage-700 text-white px-6 py-3.5 rounded-xl font-semibold text-base transition-colors focus-calm shadow-lg shadow-sage-200"
           >
-            Create my first guide
+            Create new profile
             <ArrowRight className="w-4 h-4" />
           </Link>
           <Link
-            href="/plan"
+            href="/guides"
             className="inline-flex items-center justify-center gap-2 bg-white hover:bg-sage-50 text-sage-700 border border-sage-200 px-6 py-3.5 rounded-xl font-semibold text-base transition-colors focus-calm"
           >
-            Skip to venue URL
+            Log in
+          </Link>
+        </div>
+        <div className="mb-16">
+          <Link
+            href="/plan"
+            className="inline-flex items-center gap-1.5 text-sm text-sage-600 hover:text-sage-900 underline underline-offset-4"
+          >
+            Or skip straight to a venue URL
+            <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
 
