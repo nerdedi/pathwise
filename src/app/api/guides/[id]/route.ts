@@ -10,7 +10,7 @@ import type { Itinerary } from "@/types/itinerary";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 const UpdateGuideSchema = z.object({
   itinerary: z
@@ -32,6 +32,7 @@ const UpdateGuideSchema = z.object({
 
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -44,7 +45,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const { data, error } = await supabase
       .from("itineraries")
       .select("itinerary_json")
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -67,7 +68,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       const { data: sharedGuide, error: sharedError } = await admin
         .from("itineraries")
         .select("itinerary_json")
-        .eq("id", params.id)
+        .eq("id", id)
         .maybeSingle();
 
       if (sharedError) throw sharedError;
@@ -102,6 +103,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -114,7 +116,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const body = await req.json();
     const { itinerary } = UpdateGuideSchema.parse(body);
 
-    if (itinerary.id !== params.id) {
+    if (itinerary.id !== id) {
       return NextResponse.json(
         { error: "Guide id mismatch" },
         { status: 400 }
@@ -146,7 +148,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
         overall_sensory_rating: itinerary.venueData.overallSensoryRating,
         shared_with_emails: ownerReadyItinerary.sharedWithEmails ?? [],
       })
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("user_id", user.id)
       .select("id");
 
@@ -161,7 +163,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       const { data: sharedGuide, error: sharedError } = await admin
         .from("itineraries")
         .select("itinerary_json")
-        .eq("id", params.id)
+        .eq("id", id)
         .maybeSingle();
 
       if (sharedError) throw sharedError;
@@ -206,7 +208,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
           overall_sensory_rating: itinerary.venueData.overallSensoryRating,
           shared_with_emails: collaboratorSafeUpdate.sharedWithEmails ?? [],
         })
-        .eq("id", params.id);
+        .eq("id", id);
 
       if (collaboratorError) throw collaboratorError;
     }
@@ -230,6 +232,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -242,7 +245,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     const { error } = await supabase
       .from("itineraries")
       .delete()
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("user_id", user.id);
 
     if (error) throw error;

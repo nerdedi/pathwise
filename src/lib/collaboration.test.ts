@@ -162,4 +162,29 @@ describe("collaboration helpers", () => {
     expect(sanitized.sharedWith).toEqual([{ email: "viewer@example.com", role: "viewer" }]);
     expect(sanitized.lockedSectionIds).toEqual(["arrival"]);
   });
+
+  it("keeps private notes for owner access and normalizes collaborators", () => {
+    const itinerary = makeItinerary({
+      privateNotes: "owner-only",
+      sharedWithEmails: ["LegacyOne@example.com", "LegacyTwo@example.com"],
+      lockedSectionIds: ["arrival", "inside"],
+    });
+
+    const sanitized = sanitizeItineraryForAccess(itinerary, true);
+
+    expect(sanitized.privateNotes).toBe("owner-only");
+    expect(sanitized.sharedWith).toEqual([
+      { email: "legacyone@example.com", role: "editor" },
+      { email: "legacytwo@example.com", role: "editor" },
+    ]);
+    expect(sanitized.sharedWithEmails).toEqual([
+      "legacyone@example.com",
+      "legacytwo@example.com",
+    ]);
+    expect(sanitized.lockedSectionIds).toEqual(["arrival", "inside"]);
+  });
+
+  it("returns no collaborator role for blank emails", () => {
+    expect(getCollaboratorRole({ sharedWith: [], sharedWithEmails: [] }, "   ")).toBeUndefined();
+  });
 });

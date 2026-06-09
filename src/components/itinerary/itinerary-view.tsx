@@ -188,7 +188,7 @@ export default function ItineraryView({
   canManageCollaborators = allowEditing,
 }: ItineraryViewProps) {
   const printRef = useRef<HTMLDivElement>(null);
-  const handlePrint = useReactToPrint({ content: () => printRef.current });
+  const handlePrint = useReactToPrint({ contentRef: printRef });
   const [draftItinerary, setDraftItinerary] = useState<Itinerary>(itinerary);
   const [editMode, setEditMode] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");

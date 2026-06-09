@@ -35,7 +35,7 @@ export default function SocialStoryViewer({
   itineraryId,
 }: SocialStoryViewerProps) {
   const printRef = useRef<HTMLDivElement>(null);
-  const handlePrint = useReactToPrint({ content: () => printRef.current });
+  const handlePrint = useReactToPrint({ contentRef: printRef });
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-lavender-50 to-white">

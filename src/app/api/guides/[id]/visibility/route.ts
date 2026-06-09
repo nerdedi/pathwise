@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 const RequestSchema = z.object({
   isPublic: z.boolean(),
@@ -10,6 +10,7 @@ const RequestSchema = z.object({
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -25,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const { error } = await supabase
       .from("itineraries")
       .update({ is_public: isPublic })
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("user_id", user.id);
 
     if (error) throw error;

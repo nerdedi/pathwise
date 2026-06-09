@@ -40,7 +40,6 @@ export default function VenueMap({ center, facilities, venueName }: VenueMapProp
 
     async function initMap() {
       const mapboxgl = (await import("mapbox-gl")).default;
-      // @ts-expect-error -- CSS module import, no type declarations needed
       await import("mapbox-gl/dist/mapbox-gl.css");
 
       const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;

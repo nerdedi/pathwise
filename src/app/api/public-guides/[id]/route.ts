@@ -3,16 +3,17 @@ import { createClient } from "@/lib/supabase/server";
 import type { Itinerary } from "@/types/itinerary";
 import { NextRequest, NextResponse } from "next/server";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from("itineraries")
       .select("itinerary_json, is_public")
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("is_public", true)
       .maybeSingle();
 
