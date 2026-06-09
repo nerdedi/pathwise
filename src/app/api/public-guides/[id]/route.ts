@@ -1,4 +1,5 @@
 import { sanitizeItineraryForAccess } from "@/lib/collaboration";
+import { logError } from "@/lib/logger";
 import { createClient } from "@/lib/supabase/server";
 import type { Itinerary } from "@/types/itinerary";
 import { NextRequest, NextResponse } from "next/server";
@@ -27,7 +28,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     return NextResponse.json({ itinerary: publicItinerary });
   } catch (err) {
-    console.error("[/api/public-guides/:id GET]", err);
+    logError("/api/public-guides/:id GET", err);
     return NextResponse.json(
       { error: "Failed to load public guide." },
       { status: 500 }

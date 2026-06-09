@@ -1,3 +1,4 @@
+import { logError } from "@/lib/logger";
 import { createClient } from "@/lib/supabase/server";
 import type { SensoryProfile } from "@/types/sensory-profile";
 import { NextRequest, NextResponse } from "next/server";
@@ -120,7 +121,7 @@ export async function GET() {
 
     return NextResponse.json({ profile: mapDbToProfile(data as Record<string, unknown>) });
   } catch (err) {
-    console.error("[/api/profile GET]", err);
+    logError("/api/profile GET", err);
     return NextResponse.json(
       { error: "Failed to load profile." },
       { status: 500 }
@@ -194,7 +195,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.error("[/api/profile POST]", err);
+    logError("/api/profile POST", err);
     return NextResponse.json(
       { error: "Failed to save profile." },
       { status: 500 }

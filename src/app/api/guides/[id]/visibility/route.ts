@@ -1,3 +1,4 @@
+import { logError } from "@/lib/logger";
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -40,7 +41,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       );
     }
 
-    console.error("[/api/guides/:id/visibility PATCH]", err);
+    logError("/api/guides/:id/visibility PATCH", err);
     return NextResponse.json(
       { error: "Failed to update guide visibility." },
       { status: 500 }

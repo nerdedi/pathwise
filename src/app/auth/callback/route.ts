@@ -1,3 +1,4 @@
+import { logError } from "@/lib/logger";
 import { getSafeInternalRedirectPath } from "@/lib/redirect";
 import { isSupabaseAuthConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
       const supabase = await createClient();
       await supabase.auth.exchangeCodeForSession(code);
     } catch (error) {
-      console.error("[/auth/callback]", error);
+      logError("/auth/callback", error);
     }
   }
 

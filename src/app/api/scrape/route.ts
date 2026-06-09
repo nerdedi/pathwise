@@ -1,5 +1,6 @@
 import { crawlVenueSite, scrapeVenueUrl } from "@/lib/firecrawl";
 import { generateJson } from "@/lib/gemini";
+import { logError } from "@/lib/logger";
 import { VENUE_EXTRACTION_SYSTEM_PROMPT } from "@/lib/prompts";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    console.error("[/api/scrape]", err);
+    logError("/api/scrape", err);
     return NextResponse.json(
       { error: "Failed to scrape venue. Please check the URL and try again." },
       { status: 500 }

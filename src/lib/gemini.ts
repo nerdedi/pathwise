@@ -10,11 +10,6 @@ import OpenAI from "openai";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 const GEMINI_MODEL = "gemini-2.0-flash";
 
-/** Returns the active provider name for logging */
-function activeProvider(): "groq" | "gemini" {
-  return process.env.GROQ_API_KEY ? "groq" : "gemini";
-}
-
 async function generateJsonGroq(
   systemPrompt: string,
   userMessage: string

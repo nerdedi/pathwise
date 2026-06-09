@@ -1,4 +1,5 @@
 import { getTripPlan } from "@/lib/transport-nsw";
+import { logError } from "@/lib/logger";
 import { format } from "date-fns";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    console.error("[/api/transport]", err);
+    logError("/api/transport", err);
     return NextResponse.json(
       { error: "Failed to fetch transport information." },
       { status: 500 }

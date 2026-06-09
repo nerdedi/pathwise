@@ -1,3 +1,4 @@
+import { logError } from "@/lib/logger";
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    console.error("[/api/community GET]", err);
+    logError("/api/community GET", err);
     return NextResponse.json(
       { error: "Failed to load community notes." },
       { status: 500 }
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.error("[/api/community POST]", err);
+    logError("/api/community POST", err);
     return NextResponse.json(
       { error: "Failed to save community note." },
       { status: 500 }

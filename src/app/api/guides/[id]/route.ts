@@ -4,6 +4,7 @@ import {
     normalizeCollaborators,
     sanitizeItineraryForAccess,
 } from "@/lib/collaboration";
+import { logError } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { Itinerary } from "@/types/itinerary";
@@ -93,7 +94,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     return NextResponse.json({ error: "Guide not found" }, { status: 404 });
   } catch (err) {
-    console.error("[/api/guides/:id GET]", err);
+    logError("/api/guides/:id GET", err);
     return NextResponse.json(
       { error: "Failed to load guide." },
       { status: 500 }
@@ -222,7 +223,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       );
     }
 
-    console.error("[/api/guides/:id PUT]", err);
+    logError("/api/guides/:id PUT", err);
     return NextResponse.json(
       { error: "Failed to update guide." },
       { status: 500 }
@@ -252,7 +253,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("[/api/guides/:id DELETE]", err);
+    logError("/api/guides/:id DELETE", err);
     return NextResponse.json(
       { error: "Failed to delete guide." },
       { status: 500 }

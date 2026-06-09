@@ -1,4 +1,5 @@
 import { normalizeCollaborators } from "@/lib/collaboration";
+import { logError } from "@/lib/logger";
 import { createClient } from "@/lib/supabase/server";
 import type { Itinerary } from "@/types/itinerary";
 import { NextRequest, NextResponse } from "next/server";
@@ -41,7 +42,7 @@ export async function GET() {
 
     return NextResponse.json({ guides: data ?? [] });
   } catch (err) {
-    console.error("[/api/guides GET]", err);
+    logError("/api/guides GET", err);
     return NextResponse.json(
       { error: "Failed to load saved guides." },
       { status: 500 }
@@ -102,7 +103,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.error("[/api/guides POST]", err);
+    logError("/api/guides POST", err);
     return NextResponse.json(
       { error: "Failed to save guide." },
       { status: 500 }

@@ -1,5 +1,6 @@
 import { generateJson } from "@/lib/gemini";
 import { AiItinerarySchema } from "@/lib/itinerary-ai";
+import { logError, logWarn } from "@/lib/logger";
 import { buildItineraryPrompt } from "@/lib/prompts";
 import { getTripPlan } from "@/lib/transport-nsw";
 import { getWeatherForecast, getWeatherPackingTips } from "@/lib/weather";
@@ -114,7 +115,9 @@ Do NOT wrap the output in any outer key like "itinerary". Return the flat object
 
     const parsedAi = AiItinerarySchema.safeParse(itineraryData);
     if (!parsedAi.success) {
-      console.warn("[/api/itinerary] AI output validation fallback", parsedAi.error.flatten());
+      logWarn("/api/itinerary", "AI output validation fallback", {
+        issues: parsedAi.error.flatten(),
+      });
     }
 
     const normalizedAiData = parsedAi.success
@@ -162,7 +165,7 @@ Do NOT wrap the output in any outer key like "itinerary". Return the flat object
         { status: 400 }
       );
     }
-    console.error("[/api/itinerary]", err);
+    logError("/api/itinerary", err);
     return NextResponse.json(
       { error: "Failed to generate itinerary. Please try again." },
       { status: 500 }

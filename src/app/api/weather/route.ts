@@ -1,4 +1,5 @@
 import { getWeatherForecast } from "@/lib/weather";
+import { logError } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    console.error("[/api/weather]", err);
+    logError("/api/weather", err);
     return NextResponse.json(
       { error: "Failed to fetch weather forecast." },
       { status: 500 }

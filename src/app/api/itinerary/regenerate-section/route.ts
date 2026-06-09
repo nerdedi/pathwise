@@ -1,5 +1,6 @@
 import { generateJson } from "@/lib/gemini";
 import { AiSectionSchema } from "@/lib/itinerary-ai";
+import { logError, logWarn } from "@/lib/logger";
 import { buildItineraryPrompt } from "@/lib/prompts";
 import type { Itinerary } from "@/types/itinerary";
 import type { SensoryProfile } from "@/types/sensory-profile";
@@ -79,7 +80,9 @@ Return ONLY the section JSON object.
     });
 
     if (!parsed.success) {
-      console.warn("[/api/itinerary/regenerate-section] validation fallback", parsed.error.flatten());
+      logWarn("/api/itinerary/regenerate-section", "validation fallback", {
+        issues: parsed.error.flatten(),
+      });
       return NextResponse.json({ section: currentSection });
     }
 
@@ -92,7 +95,7 @@ Return ONLY the section JSON object.
       );
     }
 
-    console.error("[/api/itinerary/regenerate-section]", err);
+    logError("/api/itinerary/regenerate-section", err);
     return NextResponse.json(
       { error: "Failed to regenerate section." },
       { status: 500 }
