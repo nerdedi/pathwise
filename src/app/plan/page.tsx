@@ -33,7 +33,22 @@ export default function PlanPage() {
       let sensoryProfile = {};
       try {
         const stored = localStorage.getItem("pathwise_sensory_profile");
-        if (stored) sensoryProfile = JSON.parse(stored);
+        if (stored) {
+          sensoryProfile = JSON.parse(stored);
+        } else {
+          // Fallback to server profile for signed-in users
+          const profileRes = await fetch("/api/profile", { cache: "no-store" });
+          if (profileRes.ok) {
+            const data = await profileRes.json();
+            if (data.profile) {
+              sensoryProfile = data.profile;
+              localStorage.setItem(
+                "pathwise_sensory_profile",
+                JSON.stringify(data.profile)
+              );
+            }
+          }
+        }
       } catch {
         // ignore
       }
@@ -74,6 +89,18 @@ export default function PlanPage() {
 
       // Store and redirect to itinerary view
       sessionStorage.setItem(`pathwise_itinerary_${itinerary.id}`, JSON.stringify(itinerary));
+
+      // Best-effort save for authenticated users
+      try {
+        await fetch("/api/guides", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itinerary }),
+        });
+      } catch {
+        // non-blocking: local session copy still works
+      }
+
       router.push(`/plan/${itinerary.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -86,12 +113,17 @@ export default function PlanPage() {
     <div className="min-h-screen bg-gradient-to-b from-sage-50 to-white">
       {/* Nav */}
       <nav className="bg-white border-b border-sage-100 px-4 h-14 flex items-center">
-        <Link href="/" className="flex items-center gap-2 text-sage-800 font-semibold">
+        <div className="flex items-center justify-between w-full max-w-xl mx-auto">
+          <Link href="/" className="flex items-center gap-2 text-sage-800 font-semibold">
           <div className="w-7 h-7 bg-sage-500 rounded-lg flex items-center justify-center">
             <MapPin className="w-3.5 h-3.5 text-white" />
           </div>
           Pathwise
-        </Link>
+          </Link>
+          <Link href="/guides" className="text-sm text-sage-600 hover:text-sage-800">
+            My guides
+          </Link>
+        </div>
       </nav>
 
       <div className="max-w-xl mx-auto px-4 pt-12 pb-16">

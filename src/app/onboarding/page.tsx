@@ -8,13 +8,14 @@ import {
     ArrowRight,
     CheckCircle2,
     Heart,
+    Loader2,
     Sun,
     Users,
     Volume2,
     Wind,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Step = {
   id: string;
@@ -143,19 +144,70 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const [profile, setProfile] = useState<SensoryProfile>(defaultSensoryProfile);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [finishing, setFinishing] = useState(false);
 
   const update = <K extends keyof SensoryProfile>(key: K, value: SensoryProfile[K]) => {
     setProfile((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleFinish = () => {
-    // Save to localStorage for now (Supabase auth optional)
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        // Always try local first for instant UX
+        const stored = localStorage.getItem("pathwise_sensory_profile");
+        if (stored) {
+          setProfile(JSON.parse(stored) as SensoryProfile);
+        }
+
+        // Then try authenticated server profile (if signed in)
+        const res = await fetch("/api/profile", { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.profile) {
+            setProfile(data.profile as SensoryProfile);
+            localStorage.setItem("pathwise_sensory_profile", JSON.stringify(data.profile));
+          }
+        }
+      } catch {
+        // Non-blocking: defaults/local still work
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+
+    loadProfile();
+  }, []);
+
+  const handleFinish = async () => {
+    setFinishing(true);
+    // Always keep local copy
     localStorage.setItem("pathwise_sensory_profile", JSON.stringify(profile));
+
+    // Best-effort save for authenticated users
+    try {
+      await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile }),
+      });
+    } catch {
+      // non-blocking
+    }
+
     router.push("/plan");
   };
 
   const isFirst = currentStep === 0;
   const isLast = currentStep === steps.length - 1;
+
+  if (loadingProfile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-sage-50 to-white">
+        <Loader2 className="w-6 h-6 text-sage-400 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sage-50 to-white flex flex-col">
@@ -406,11 +458,16 @@ export default function OnboardingPage() {
               </button>
             )}
             <button
+              disabled={finishing}
               onClick={isLast ? handleFinish : () => setCurrentStep((s) => s + 1)}
               className="flex-1 flex items-center justify-center gap-2 bg-sage-600 hover:bg-sage-700 text-white px-5 py-3 rounded-xl font-semibold text-sm transition-colors focus-calm"
             >
-              {isLast ? "Create my guide" : "Continue"}
-              <ArrowRight className="w-4 h-4" />
+              {isLast ? (finishing ? "Saving…" : "Create my guide") : "Continue"}
+              {isLast && finishing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <ArrowRight className="w-4 h-4" />
+              )}
             </button>
           </div>
 

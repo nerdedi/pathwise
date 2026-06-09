@@ -13,16 +13,38 @@ export default function SocialStoryPage() {
 
   useEffect(() => {
     if (!params.id) return;
-    try {
-      const stored = sessionStorage.getItem(`pathwise_itinerary_${params.id}`);
-      if (stored) {
-        setItinerary(JSON.parse(stored) as Itinerary);
-      } else {
+
+    const load = async () => {
+      try {
+        const stored = sessionStorage.getItem(`pathwise_itinerary_${params.id}`);
+        if (stored) {
+          setItinerary(JSON.parse(stored) as Itinerary);
+          return;
+        }
+
+        const res = await fetch(`/api/guides/${params.id}`, { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          setItinerary(data.itinerary as Itinerary);
+          sessionStorage.setItem(
+            `pathwise_itinerary_${params.id}`,
+            JSON.stringify(data.itinerary)
+          );
+          return;
+        }
+
+        if (res.status === 401) {
+          setError("This social story requires sign-in. Open My Guides to log in.");
+          return;
+        }
+
         setError("Social story not found. Please generate a new guide first.");
+      } catch {
+        setError("Failed to load social story.");
       }
-    } catch {
-      setError("Failed to load social story.");
-    }
+    };
+
+    load();
   }, [params.id]);
 
   if (error) {

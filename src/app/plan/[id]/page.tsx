@@ -15,16 +15,38 @@ export default function ItineraryPage() {
 
   useEffect(() => {
     if (!params.id) return;
-    try {
-      const stored = sessionStorage.getItem(`pathwise_itinerary_${params.id}`);
-      if (stored) {
-        setItinerary(JSON.parse(stored) as Itinerary);
-      } else {
+
+    const load = async () => {
+      try {
+        const stored = sessionStorage.getItem(`pathwise_itinerary_${params.id}`);
+        if (stored) {
+          setItinerary(JSON.parse(stored) as Itinerary);
+          return;
+        }
+
+        const res = await fetch(`/api/guides/${params.id}`, { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          setItinerary(data.itinerary as Itinerary);
+          sessionStorage.setItem(
+            `pathwise_itinerary_${params.id}`,
+            JSON.stringify(data.itinerary)
+          );
+          return;
+        }
+
+        if (res.status === 401) {
+          setError("This saved guide requires sign-in. Open My Guides to log in.");
+          return;
+        }
+
         setError("Guide not found. It may have expired — please generate a new one.");
+      } catch {
+        setError("Failed to load your guide.");
       }
-    } catch {
-      setError("Failed to load your guide.");
-    }
+    };
+
+    load();
   }, [params.id]);
 
   if (error) {

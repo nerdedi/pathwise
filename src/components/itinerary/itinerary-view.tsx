@@ -10,10 +10,12 @@ import {
     ChevronDown,
     ChevronUp,
     Download,
+  Edit3,
     Mail,
     MapPin,
     Phone,
     Printer,
+  Save,
 } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
@@ -32,8 +34,12 @@ interface ItineraryViewProps {
 
 function SectionCard({
   section,
+  editable,
+  onUpdate,
 }: {
   section: Itinerary["sections"][0];
+  editable?: boolean;
+  onUpdate?: (patch: Partial<Itinerary["sections"][0]>) => void;
 }) {
   const [open, setOpen] = useState(!section.isExpandable);
 
@@ -62,18 +68,45 @@ function SectionCard({
 
       {open && (
         <CardContent className="pt-0">
-          <p className="text-sm text-sage-700 leading-relaxed whitespace-pre-line">
-            {section.content}
-          </p>
-          {section.details && section.details.length > 0 && (
-            <ul className="mt-3 space-y-1.5">
-              {section.details.map((detail, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-sage-700">
-                  <span className="text-sage-400 mt-0.5">•</span>
-                  {detail}
-                </li>
-              ))}
-            </ul>
+          {editable ? (
+            <div className="space-y-3">
+              <textarea
+                value={section.content}
+                onChange={(e) => onUpdate?.({ content: e.target.value })}
+                className="w-full min-h-24 text-sm text-sage-700 border border-sage-200 rounded-xl p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+              />
+              <div>
+                <p className="text-xs text-sage-500 mb-1">Details (one per line)</p>
+                <textarea
+                  value={(section.details ?? []).join("\n")}
+                  onChange={(e) =>
+                    onUpdate?.({
+                      details: e.target.value
+                        .split("\n")
+                        .map((line) => line.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                  className="w-full min-h-24 text-sm text-sage-700 border border-sage-200 rounded-xl p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+                />
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-sage-700 leading-relaxed whitespace-pre-line">
+                {section.content}
+              </p>
+              {section.details && section.details.length > 0 && (
+                <ul className="mt-3 space-y-1.5">
+                  {section.details.map((detail, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-sage-700">
+                      <span className="text-sage-400 mt-0.5">•</span>
+                      {detail}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </CardContent>
       )}
@@ -84,11 +117,56 @@ function SectionCard({
 export default function ItineraryView({ itinerary }: ItineraryViewProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ content: () => printRef.current });
+  const [draftItinerary, setDraftItinerary] = useState<Itinerary>(itinerary);
+  const [editMode, setEditMode] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const venue = itinerary.venueData;
-  const weatherPackingTips = itinerary.weather
-    ? getWeatherPackingTips(itinerary.weather as unknown as WeatherDay)
+  const venue = draftItinerary.venueData;
+  const weatherPackingTips = draftItinerary.weather
+    ? getWeatherPackingTips(draftItinerary.weather as unknown as WeatherDay)
     : [];
+
+  const updateSection = (sectionId: string, patch: Partial<Itinerary["sections"][0]>) => {
+    setDraftItinerary((prev) => ({
+      ...prev,
+      sections: prev.sections.map((section) =>
+        section.id === sectionId ? { ...section, ...patch } : section
+      ),
+    }));
+  };
+
+  const saveChanges = async () => {
+    setSaving(true);
+    setSaveMessage("");
+
+    // Always persist local cache
+    sessionStorage.setItem(
+      `pathwise_itinerary_${draftItinerary.id}`,
+      JSON.stringify(draftItinerary)
+    );
+
+    try {
+      const res = await fetch(`/api/guides/${draftItinerary.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary: draftItinerary }),
+      });
+
+      if (res.ok) {
+        setSaveMessage("Saved to your account.");
+      } else if (res.status === 401) {
+        setSaveMessage("Saved on this device only (sign in to sync). ");
+      } else {
+        setSaveMessage("Saved on this device. Cloud save failed.");
+      }
+    } catch {
+      setSaveMessage("Saved on this device. Cloud save failed.");
+    } finally {
+      setSaving(false);
+      setEditMode(false);
+    }
+  };
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -102,8 +180,26 @@ export default function ItineraryView({ itinerary }: ItineraryViewProps) {
             </div>
             <h1 className="text-3xl font-bold text-sage-900">{venue.name}</h1>
             <p className="text-sage-600 mt-1 text-sm">{venue.address}</p>
+            {saveMessage && (
+              <p className="text-xs text-sage-600 mt-1">{saveMessage}</p>
+            )}
           </div>
           <div className="flex gap-2 flex-wrap no-print">
+            <Button
+              variant={editMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => setEditMode((v) => !v)}
+              className="gap-1.5"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              {editMode ? "Cancel edit" : "Edit sections"}
+            </Button>
+            {editMode && (
+              <Button size="sm" onClick={saveChanges} disabled={saving} className="gap-1.5">
+                <Save className="w-3.5 h-3.5" />
+                {saving ? "Saving…" : "Save changes"}
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -113,8 +209,8 @@ export default function ItineraryView({ itinerary }: ItineraryViewProps) {
               <Printer className="w-3.5 h-3.5" />
               Print
             </Button>
-            {itinerary.venueData && (
-              <Link href={`/social-story/${itinerary.id}`}>
+            {draftItinerary.venueData && (
+              <Link href={`/social-story/${draftItinerary.id}`}>
                 <Button variant="calm" size="sm" className="gap-1.5">
                   <BookOpen className="w-3.5 h-3.5" />
                   Social story
@@ -154,9 +250,9 @@ export default function ItineraryView({ itinerary }: ItineraryViewProps) {
       </div>
 
       {/* Affirmations — before you go */}
-      {itinerary.affirmations.some((a) => a.timing === "before") && (
+      {draftItinerary.affirmations.some((a) => a.timing === "before") && (
         <div className="mb-6">
-          <AffirmationCard affirmations={itinerary.affirmations} timing="before" />
+          <AffirmationCard affirmations={draftItinerary.affirmations} timing="before" />
         </div>
       )}
 
@@ -181,46 +277,51 @@ export default function ItineraryView({ itinerary }: ItineraryViewProps) {
         )}
 
         {/* Itinerary sections */}
-        {itinerary.sections.map((section) => (
-          <SectionCard key={section.id} section={section} />
+        {draftItinerary.sections.map((section) => (
+          <SectionCard
+            key={section.id}
+            section={section}
+            editable={editMode}
+            onUpdate={(patch) => updateSection(section.id, patch)}
+          />
         ))}
 
         {/* Weather */}
-        {itinerary.weather && (
+        {draftItinerary.weather && (
           <WeatherCard
-            weather={itinerary.weather}
+            weather={draftItinerary.weather}
             packingTips={weatherPackingTips}
           />
         )}
 
         {/* Transport */}
-        {itinerary.transportTo && (
+        {draftItinerary.transportTo && (
           <TransportSection
-            plan={itinerary.transportTo}
+            plan={draftItinerary.transportTo}
             direction="to"
             venueName={venue.name}
           />
         )}
-        {itinerary.transportFrom && (
+        {draftItinerary.transportFrom && (
           <TransportSection
-            plan={itinerary.transportFrom}
+            plan={draftItinerary.transportFrom}
             direction="from"
             venueName={venue.name}
           />
         )}
 
         {/* If overwhelmed */}
-        <OverwhelmedPlan plan={itinerary.crisisPlan} />
+        <OverwhelmedPlan plan={draftItinerary.crisisPlan} />
 
         {/* Affirmations — during */}
-        {itinerary.affirmations.some((a) => a.timing === "during") && (
+        {draftItinerary.affirmations.some((a) => a.timing === "during") && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">💛 While you&rsquo;re there</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
               <AffirmationCard
-                affirmations={itinerary.affirmations}
+                affirmations={draftItinerary.affirmations}
                 timing="during"
               />
             </CardContent>
@@ -228,13 +329,13 @@ export default function ItineraryView({ itinerary }: ItineraryViewProps) {
         )}
 
         {/* Packing list */}
-        <PackingList items={itinerary.packingList} />
+        <PackingList items={draftItinerary.packingList} />
 
         {/* Risk assessment */}
         <RiskAssessment
-          score={itinerary.riskScore}
-          summary={itinerary.riskSummary}
-          details={itinerary.riskDetails}
+          score={draftItinerary.riskScore}
+          summary={draftItinerary.riskSummary}
+          details={draftItinerary.riskDetails}
         />
 
         {/* Venue contact */}
@@ -283,14 +384,14 @@ export default function ItineraryView({ itinerary }: ItineraryViewProps) {
         )}
 
         {/* Affirmations — after */}
-        {itinerary.affirmations.some((a) => a.timing === "after") && (
+        {draftItinerary.affirmations.some((a) => a.timing === "after") && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">🌟 Afterwards</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
               <AffirmationCard
-                affirmations={itinerary.affirmations}
+                affirmations={draftItinerary.affirmations}
                 timing="after"
               />
             </CardContent>

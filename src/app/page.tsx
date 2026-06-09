@@ -99,6 +99,12 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-4">
             <Link
+              href="/guides"
+              className="text-sm text-sage-700 hover:text-sage-900"
+            >
+              My guides
+            </Link>
+            <Link
               href="/plan"
               className="bg-sage-600 hover:bg-sage-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors focus-calm"
               aria-label="Create your first venue guide"
