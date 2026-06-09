@@ -41,7 +41,7 @@ export default function GuidesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
 
-  const useLocalTestLogin = (nextEmail = LOCAL_TEST_EMAIL, passwordValue = LOCAL_TEST_PASSWORD) => {
+  const applyLocalTestLogin = (nextEmail = LOCAL_TEST_EMAIL, passwordValue = LOCAL_TEST_PASSWORD) => {
     if (passwordValue.length < 8) {
       throw new Error("Use at least 8 characters for your password.");
     }
@@ -170,7 +170,7 @@ export default function GuidesPage() {
 
     try {
       if (!authConfigured) {
-        useLocalTestLogin(email, password);
+        applyLocalTestLogin(email, password);
         return;
       }
 
@@ -204,7 +204,7 @@ export default function GuidesPage() {
     } catch (authError) {
       if (process.env.NODE_ENV !== "production" && isLikelyAuthInfrastructureIssue(authError)) {
         try {
-          useLocalTestLogin(email || LOCAL_TEST_EMAIL, password || LOCAL_TEST_PASSWORD);
+          applyLocalTestLogin(email || LOCAL_TEST_EMAIL, password || LOCAL_TEST_PASSWORD);
           setError("");
           setAuthMessage(
             "Supabase auth wasn’t reachable, so Pathwise switched to local test login for this device."
