@@ -100,7 +100,7 @@ Return a flat JSON object (no wrapper key) with EXACTLY these top-level keys:
 - packingList: array of objects, each with: item (string), reason (string), priority ("essential"|"recommended"|"optional"), category (string)
 - crisisPlan: object with: steps (string[]), quietRooms (string[]), exits (string[]), helpDeskLocation (string), venuePhone (string), selfCareReminders (string[])
 - affirmations: array of objects, each with: text (string), timing ("before"|"during"|"overwhelmed"|"after")
-- socialStory: array of objects, each with: sequence (number), title (string), text (string), imagePrompt (string), emotion (string)
+- socialStory: array of objects, each with: sequence (number), title (string), text (string), imagePrompt (string), emotion (string), sensoryCue (string), supportTip (string), speakText (string), keywords (string[]), translations (optional object with language keys like es/ar/zh where each value has title/text/speakText/sensoryCue/supportTip/keywords)
 - riskScore: number from 1 to 10
 - riskSummary: string
 - riskDetails: object where each key is a category name and value is { score: number, detail: string }

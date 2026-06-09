@@ -1,16 +1,42 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import {
+    SOCIAL_STORY_LANGUAGE_OPTIONS,
+    SOCIAL_STORY_STORAGE_PREFIX,
+    getSocialStoryPanelContent,
+    moveSocialStoryPanel,
+    normalizeSocialStoryPanels,
+    parseStoredSocialStory,
+    updateSocialStoryPanelContent,
+} from "@/lib/social-story";
 import type { SocialStoryPanel } from "@/types/itinerary";
-import { ArrowLeft, Heart, Printer } from "lucide-react";
+import {
+    ArrowDown,
+    ArrowLeft,
+    ArrowUp,
+    ChevronLeft,
+    ChevronRight,
+    Heart,
+    Languages,
+    PauseCircle,
+    Pencil,
+    PlayCircle,
+    Printer,
+    RotateCcw,
+    Save,
+    Volume2,
+} from "lucide-react";
 import Link from "next/link";
-import { useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 
 interface SocialStoryViewerProps {
   panels: SocialStoryPanel[];
   venueName: string;
   itineraryId: string;
+  quietTimes?: string;
+  supportReminders?: string[];
 }
 
 const EMOTION_COLORS: Record<NonNullable<SocialStoryPanel["emotion"]>, string> = {
@@ -33,9 +59,163 @@ export default function SocialStoryViewer({
   panels,
   venueName,
   itineraryId,
+  quietTimes,
+  supportReminders = [],
 }: SocialStoryViewerProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ contentRef: printRef });
+  const [focusMode, setFocusMode] = useState(false);
+  const [activePanelIndex, setActivePanelIndex] = useState(0);
+  const [textSize, setTextSize] = useState<"standard" | "large" | "xl">("large");
+  const [speechRate, setSpeechRate] = useState(0.95);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoice, setSelectedVoice] = useState("");
+  const [isReadingAll, setIsReadingAll] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState<"en" | "es" | "ar" | "zh">("en");
+  const [storyPanels, setStoryPanels] = useState<SocialStoryPanel[]>(() => normalizeSocialStoryPanels(panels));
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setStoryPanels(normalizeSocialStoryPanels(panels));
+      return;
+    }
+
+    const key = `${SOCIAL_STORY_STORAGE_PREFIX}${itineraryId}`;
+    const stored = parseStoredSocialStory(sessionStorage.getItem(key));
+    setStoryPanels(stored ?? normalizeSocialStoryPanels(panels));
+  }, [itineraryId, panels]);
+
+  const activePanel = storyPanels[activePanelIndex] ?? storyPanels[0];
+  const textSizeClass =
+    textSize === "standard"
+      ? "text-base"
+      : textSize === "xl"
+        ? "text-xl"
+        : "text-lg";
+
+  const languageVoices = useMemo(
+    () =>
+      voices
+        .filter((voice, index, arr) => arr.findIndex((item) => item.name === voice.name) === index)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [voices]
+  );
+
+  const availableLanguages = useMemo(() => {
+    const available = new Set(["en"]);
+    storyPanels.forEach((panel) => {
+      const translations = panel.translations;
+      if (!translations) return;
+      (Object.keys(translations) as Array<"es" | "ar" | "zh">).forEach((code) => {
+        const translation = translations[code];
+        if (translation?.title || translation?.text) {
+          available.add(code);
+        }
+      });
+    });
+    return SOCIAL_STORY_LANGUAGE_OPTIONS.filter((option) => available.has(option.value));
+  }, [storyPanels]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    const loadVoices = () => {
+      const available = window.speechSynthesis.getVoices();
+      setVoices(available);
+      if (!selectedVoice && available[0]) {
+        setSelectedVoice(available[0].name);
+      }
+    };
+
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    return () => {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, [selectedVoice]);
+
+  const speak = (text: string, onEnd?: () => void) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window) || !text.trim()) {
+      onEnd?.();
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = speechRate;
+    const voice = languageVoices.find((item) => item.name === selectedVoice);
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
+    }
+    utterance.onend = () => onEnd?.();
+    utterance.onerror = () => onEnd?.();
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const speakPanel = (panel: SocialStoryPanel) => {
+    const content = getSocialStoryPanelContent(panel, selectedLanguage);
+    speak(content.speakText);
+  };
+
+  const stopSpeech = () => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsReadingAll(false);
+  };
+
+  const readAllPanels = (startIndex = 0) => {
+    if (startIndex >= storyPanels.length) {
+      setIsReadingAll(false);
+      return;
+    }
+
+    setIsReadingAll(true);
+    setActivePanelIndex(startIndex);
+    const panel = storyPanels[startIndex];
+    const content = getSocialStoryPanelContent(panel, selectedLanguage);
+    speak(content.speakText, () => {
+      readAllPanels(startIndex + 1);
+    });
+  };
+
+  const goToPanel = (index: number) => {
+    const next = Math.max(0, Math.min(index, storyPanels.length - 1));
+    setActivePanelIndex(next);
+  };
+
+  const saveCustomStory = () => {
+    if (typeof window === "undefined") return;
+    const key = `${SOCIAL_STORY_STORAGE_PREFIX}${itineraryId}`;
+    sessionStorage.setItem(key, JSON.stringify(storyPanels));
+  };
+
+  const resetCustomStory = () => {
+    const normalized = normalizeSocialStoryPanels(panels);
+    setStoryPanels(normalized);
+    setActivePanelIndex(0);
+    if (typeof window !== "undefined") {
+      const key = `${SOCIAL_STORY_STORAGE_PREFIX}${itineraryId}`;
+      sessionStorage.removeItem(key);
+    }
+  };
+
+  const updatePanelField = (
+    index: number,
+    field: "title" | "text" | "speakText" | "sensoryCue" | "supportTip",
+    value: string
+  ) => {
+    setStoryPanels((current) =>
+      updateSocialStoryPanelContent(current, index, selectedLanguage, {
+        [field]: value,
+      })
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-lavender-50 to-white">
@@ -48,10 +228,12 @@ export default function SocialStoryViewer({
           <ArrowLeft className="w-4 h-4" />
           Back to guide
         </Link>
-        <Button variant="outline" size="sm" onClick={() => handlePrint()} className="gap-1.5">
-          <Printer className="w-3.5 h-3.5" />
-          Print social story
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => handlePrint()} className="gap-1.5">
+            <Printer className="w-3.5 h-3.5" />
+            Print social story
+          </Button>
+        </div>
       </nav>
 
       <div className="max-w-2xl mx-auto px-4 py-8">
@@ -69,6 +251,117 @@ export default function SocialStoryViewer({
           </p>
         </div>
 
+        {(quietTimes || supportReminders.length > 0) && (
+          <div className="rounded-2xl border border-sage-100 bg-sage-50/60 p-4 mb-6 no-print">
+            <p className="text-xs font-semibold uppercase tracking-wide text-sage-500 mb-2">
+              Before you start
+            </p>
+            {quietTimes && (
+              <p className="text-sm text-sage-700">
+                <span className="font-semibold">Calmer time to visit:</span> {quietTimes}
+              </p>
+            )}
+            {supportReminders.length > 0 && (
+              <ul className="mt-2 space-y-1.5">
+                {supportReminders.slice(0, 3).map((reminder) => (
+                  <li key={reminder} className="flex gap-2 text-sm text-sage-700">
+                    <span className="text-sage-400 mt-0.5">•</span>
+                    <span>{reminder}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        <div className="rounded-2xl border border-lavender-100 bg-white p-4 mb-6 no-print">
+          <div className="flex flex-wrap items-center gap-2 justify-between">
+            <div className="flex flex-wrap gap-2">
+              <Button variant={focusMode ? "default" : "outline"} size="sm" onClick={() => setFocusMode((value) => !value)}>
+                {focusMode ? "Exit focus mode" : "Focus mode"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => readAllPanels(activePanelIndex)} disabled={storyPanels.length === 0 || isReadingAll} className="gap-1.5">
+                <PlayCircle className="w-3.5 h-3.5" />
+                Read from here
+              </Button>
+              <Button variant="outline" size="sm" onClick={stopSpeech} disabled={!isReadingAll} className="gap-1.5">
+                <PauseCircle className="w-3.5 h-3.5" />
+                Stop audio
+              </Button>
+              <Button variant={isEditing ? "default" : "outline"} size="sm" onClick={() => setIsEditing((value) => !value)} className="gap-1.5">
+                <Pencil className="w-3.5 h-3.5" />
+                {isEditing ? "Done editing" : "Edit story"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={saveCustomStory} className="gap-1.5" disabled={storyPanels.length === 0}>
+                <Save className="w-3.5 h-3.5" />
+                Save edits
+              </Button>
+              <Button variant="outline" size="sm" onClick={resetCustomStory} className="gap-1.5" disabled={storyPanels.length === 0}>
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reset
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-2 text-xs">
+              <select
+                value={selectedLanguage}
+                onChange={(e) => setSelectedLanguage(e.target.value as typeof selectedLanguage)}
+                className="h-9 rounded-lg border border-sage-200 bg-white px-3 text-sage-700"
+                aria-label="Story language"
+              >
+                {availableLanguages.map((language) => (
+                  <option key={language.value} value={language.value}>
+                    {language.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={textSize}
+                onChange={(e) => setTextSize(e.target.value as typeof textSize)}
+                className="h-9 rounded-lg border border-sage-200 bg-white px-3 text-sage-700"
+                aria-label="Text size"
+              >
+                <option value="standard">Standard text</option>
+                <option value="large">Large text</option>
+                <option value="xl">Extra large text</option>
+              </select>
+              <select
+                value={String(speechRate)}
+                onChange={(e) => setSpeechRate(Number(e.target.value))}
+                className="h-9 rounded-lg border border-sage-200 bg-white px-3 text-sage-700"
+                aria-label="Speech rate"
+              >
+                <option value="0.85">Slow voice</option>
+                <option value="0.95">Gentle pace</option>
+                <option value="1">Normal pace</option>
+              </select>
+              <select
+                value={selectedVoice}
+                onChange={(e) => setSelectedVoice(e.target.value)}
+                className="h-9 rounded-lg border border-sage-200 bg-white px-3 text-sage-700 max-w-44"
+                aria-label="Voice selection"
+              >
+                {languageVoices.length === 0 ? (
+                  <option value="">Browser default voice</option>
+                ) : (
+                  languageVoices.map((voice) => (
+                    <option key={voice.name} value={voice.name}>
+                      {voice.name} ({voice.lang})
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          </div>
+          <p className="text-xs text-sage-500 mt-3">
+            Tap any story card to hear it spoken aloud. Focus mode shows one step at a time, like a calmer visual schedule.
+          </p>
+          <p className="text-xs text-sage-500 mt-1 flex items-center gap-1">
+            <Languages className="w-3 h-3" />
+            Language toggle shows translated text when available. Editing updates the selected language view.
+          </p>
+        </div>
+
         {/* Printable story */}
         <div ref={printRef}>
           {/* Print header */}
@@ -77,23 +370,150 @@ export default function SocialStoryViewer({
             <p className="text-sm text-gray-500 mt-1">Made with Pathwise</p>
           </div>
 
+          {focusMode && activePanel ? (
+            <div className="space-y-4">
+              {(() => {
+                const activeContent = getSocialStoryPanelContent(activePanel, selectedLanguage);
+                return (
+              <div className="rounded-2xl border-2 p-6 bg-white border-lavender-200 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-sage-500 bg-white rounded-full w-7 h-7 flex items-center justify-center border border-sage-200">
+                    {activePanel.sequence}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={() => speakPanel(activePanel)} className="gap-1.5 no-print">
+                    <Volume2 className="w-3.5 h-3.5" />
+                    Speak this step
+                  </Button>
+                </div>
+
+                {activePanel.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={activePanel.imageUrl}
+                    alt={activeContent.title}
+                    className="w-full aspect-video object-cover rounded-xl mb-4 bg-sage-100"
+                  />
+                ) : (
+                  <div className="w-full aspect-video rounded-xl mb-4 bg-lavender-50 border border-lavender-100 flex items-center justify-center">
+                    <p className="text-sm text-center text-sage-500 px-6 italic">
+                      {activePanel.imagePrompt ?? "Illustration"}
+                    </p>
+                  </div>
+                )}
+
+                <h3 className="font-bold text-sage-900 text-xl mb-2">{activeContent.title}</h3>
+                <p className={`text-sage-800 leading-relaxed ${textSizeClass}`}>{activeContent.text}</p>
+
+                {isEditing && (
+                  <div className="mt-4 space-y-3 no-print">
+                    <input
+                      type="text"
+                      value={activeContent.title}
+                      onChange={(e) => updatePanelField(activePanelIndex, "title", e.target.value)}
+                      className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sm text-sage-800"
+                      aria-label="Edit panel title"
+                    />
+                    <textarea
+                      value={activeContent.text}
+                      onChange={(e) => updatePanelField(activePanelIndex, "text", e.target.value)}
+                      className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sm text-sage-800 min-h-24"
+                      aria-label="Edit panel text"
+                    />
+                    <textarea
+                      value={activeContent.speakText}
+                      onChange={(e) => updatePanelField(activePanelIndex, "speakText", e.target.value)}
+                      className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sm text-sage-700 min-h-16"
+                      aria-label="Edit panel spoken text"
+                    />
+                  </div>
+                )}
+
+                {(activeContent.sensoryCue || activeContent.supportTip || (activeContent.keywords?.length ?? 0) > 0) && (
+                  <div className="mt-4 space-y-3">
+                    {activeContent.sensoryCue && (
+                      <div className="rounded-xl bg-warm-50 border border-warm-100 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-warm-700 mb-1">Sensory cue</p>
+                        <p className="text-sm text-sage-700">{activeContent.sensoryCue}</p>
+                      </div>
+                    )}
+                    {activeContent.supportTip && (
+                      <div className="rounded-xl bg-sage-50 border border-sage-100 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-sage-700 mb-1">Support tip</p>
+                        <p className="text-sm text-sage-700">{activeContent.supportTip}</p>
+                      </div>
+                    )}
+                    {(activeContent.keywords?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {activeContent.keywords?.map((keyword) => (
+                          <span key={`${activePanel.sequence}-${keyword}`} className="rounded-full border border-lavender-200 bg-lavender-50 px-3 py-1 text-xs text-lavender-700">
+                            {keyword}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+                );
+              })()}
+
+              <div className="flex items-center justify-between gap-3 no-print">
+                <Button variant="outline" onClick={() => goToPanel(activePanelIndex - 1)} disabled={activePanelIndex === 0} className="gap-1.5">
+                  <ChevronLeft className="w-4 h-4" />
+                  Previous step
+                </Button>
+                <p className="text-xs text-sage-500">Step {activePanelIndex + 1} of {storyPanels.length}</p>
+                <Button variant="outline" onClick={() => goToPanel(activePanelIndex + 1)} disabled={activePanelIndex >= storyPanels.length - 1} className="gap-1.5">
+                  Next step
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {panels.map((panel) => {
+            {storyPanels.map((panel, index) => {
               const emotionKey = panel.emotion ?? "calm";
               const colorClass = EMOTION_COLORS[emotionKey];
               const emoji = EMOTION_EMOJIS[emotionKey];
+              const localized = getSocialStoryPanelContent(panel, selectedLanguage);
 
               return (
                 <div
                   key={panel.sequence}
-                  className={`rounded-2xl border-2 p-5 ${colorClass} print-page-break-avoid`}
+                  className={`rounded-2xl border-2 p-5 text-left ${colorClass} print-page-break-avoid focus-calm`}
                 >
                   {/* Panel number */}
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-bold text-sage-500 bg-white rounded-full w-6 h-6 flex items-center justify-center border border-sage-200">
                       {panel.sequence}
                     </span>
-                    <span className="text-xl">{emoji}</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xl">{emoji}</span>
+                      {isEditing && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setStoryPanels((current) => moveSocialStoryPanel(current, index, -1))}
+                            disabled={index === 0}
+                            className="h-7 w-7 p-0"
+                            aria-label="Move step earlier"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setStoryPanels((current) => moveSocialStoryPanel(current, index, 1))}
+                            disabled={index >= storyPanels.length - 1}
+                            className="h-7 w-7 p-0"
+                            aria-label="Move step later"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   {/* Image placeholder (shows imagePrompt as description for now) */}
@@ -101,7 +521,7 @@ export default function SocialStoryViewer({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={panel.imageUrl}
-                      alt={panel.title}
+                      alt={localized.title}
                       className="w-full aspect-video object-cover rounded-xl mb-3 bg-sage-100"
                     />
                   ) : (
@@ -114,17 +534,68 @@ export default function SocialStoryViewer({
 
                   {/* Title */}
                   <h3 className="font-bold text-sage-900 text-base mb-2">
-                    {panel.title}
+                    {localized.title}
                   </h3>
 
                   {/* Text — large, clear */}
                   <p className="text-sage-800 leading-relaxed text-base">
-                    {panel.text}
+                    {localized.text}
                   </p>
+
+                  {isEditing && (
+                    <div className="mt-3 space-y-2 no-print">
+                      <input
+                        type="text"
+                        value={localized.title}
+                        onChange={(e) => updatePanelField(index, "title", e.target.value)}
+                        className="w-full rounded-lg border border-sage-200 px-3 py-2 text-xs text-sage-800"
+                        aria-label={`Edit step ${panel.sequence} title`}
+                      />
+                      <textarea
+                        value={localized.text}
+                        onChange={(e) => updatePanelField(index, "text", e.target.value)}
+                        className="w-full rounded-lg border border-sage-200 px-3 py-2 text-xs text-sage-800 min-h-20"
+                        aria-label={`Edit step ${panel.sequence} text`}
+                      />
+                    </div>
+                  )}
+
+                  {(localized.sensoryCue || localized.supportTip || (localized.keywords?.length ?? 0) > 0) && (
+                    <div className="mt-3 space-y-2">
+                      {localized.sensoryCue && (
+                        <p className="text-xs text-sage-600"><span className="font-semibold">Sensory cue:</span> {localized.sensoryCue}</p>
+                      )}
+                      {localized.supportTip && (
+                        <p className="text-xs text-sage-600"><span className="font-semibold">Support tip:</span> {localized.supportTip}</p>
+                      )}
+                      {(localized.keywords?.length ?? 0) > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {localized.keywords?.map((keyword) => (
+                            <span key={`${panel.sequence}-${keyword}`} className="rounded-full bg-white/80 border border-current/10 px-2 py-0.5 text-[11px] text-sage-600">
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setActivePanelIndex(index);
+                      speakPanel(panel);
+                    }}
+                    className="mt-3 gap-1.5 no-print"
+                  >
+                    <Volume2 className="w-3.5 h-3.5" />
+                    Speak step
+                  </Button>
                 </div>
               );
             })}
           </div>
+          )}
 
           {/* Print footer */}
           <div className="hidden print:block mt-8 text-center text-xs text-gray-400 border-t pt-4">

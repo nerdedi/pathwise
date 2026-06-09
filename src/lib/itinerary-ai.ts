@@ -94,6 +94,22 @@ export const AiItinerarySchema = z.object({
         text: z.string().default(""),
         imagePrompt: z.string().optional(),
         emotion: z.enum(["calm", "curious", "happy", "uncertain", "proud"]).catch("calm").optional(),
+        sensoryCue: z.string().optional(),
+        supportTip: z.string().optional(),
+        speakText: z.string().optional(),
+        keywords: z.array(z.string()).default([]),
+        translations: z
+          .record(
+            z.object({
+              title: z.string().optional(),
+              text: z.string().default(""),
+              sensoryCue: z.string().optional(),
+              supportTip: z.string().optional(),
+              speakText: z.string().optional(),
+              keywords: z.array(z.string()).default([]),
+            })
+          )
+          .optional(),
       })
     )
     .default([]),

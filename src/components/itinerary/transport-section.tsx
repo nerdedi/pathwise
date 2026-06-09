@@ -1,15 +1,33 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buildTransportSupportCards } from "@/lib/transport-support";
 import { formatTime, minutesToDuration } from "@/lib/utils";
 import type { TransportPlan } from "@/types/itinerary";
-import { Bus, ChevronDown, ChevronUp, Clock, Footprints, MapPin, Train } from "lucide-react";
+import type { EmergencyContact } from "@/types/sensory-profile";
+import {
+    BellRing,
+    Bus,
+    ChevronDown,
+    ChevronUp,
+    Clock,
+    Footprints,
+    LifeBuoy,
+    MapPin,
+    Phone,
+    RefreshCw,
+    Train,
+    Users,
+} from "lucide-react";
 import { useState } from "react";
 
 interface TransportSectionProps {
   plan: TransportPlan;
   direction: "to" | "from";
   venueName: string;
+  supportCardName?: string;
+  supportCardMessage?: string;
+  emergencyContacts?: EmergencyContact[];
 }
 
 const MODE_ICONS = {
@@ -20,8 +38,33 @@ const MODE_ICONS = {
   walk: Footprints,
 };
 
-export default function TransportSection({ plan, direction, venueName }: TransportSectionProps) {
-  const [expanded, setExpanded] = useState(false);
+const SUPPORT_ICON_MAP = {
+  navigation: MapPin,
+  alert: BellRing,
+  refresh: RefreshCw,
+  crowd: Users,
+  clock: Clock,
+  bus: Bus,
+  phone: Phone,
+  help: LifeBuoy,
+} as const;
+
+export default function TransportSection({
+  plan,
+  direction,
+  venueName,
+  supportCardName,
+  supportCardMessage,
+  emergencyContacts = [],
+}: TransportSectionProps) {
+  const [expandedLegIndex, setExpandedLegIndex] = useState<number | null>(null);
+  const supportCards = buildTransportSupportCards(plan, {
+    venueName,
+    direction,
+    supportCardName,
+    supportCardMessage,
+    emergencyContacts,
+  });
 
   return (
     <Card>
@@ -32,6 +75,29 @@ export default function TransportSection({ plan, direction, venueName }: Transpo
         </CardTitle>
       </CardHeader>
       <CardContent>
+        <div className="mb-4 rounded-xl border border-calm-100 bg-calm-50/50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-calm-700 mb-2">
+            Top travel supports
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {supportCards.map((card) => {
+              const Icon = SUPPORT_ICON_MAP[card.icon];
+              return (
+                <div
+                  key={card.id}
+                  className="rounded-lg border border-calm-100 bg-white px-3 py-2.5"
+                >
+                  <p className="text-xs text-calm-700 font-semibold flex items-center gap-1.5">
+                    <Icon className="w-3.5 h-3.5" />
+                    {card.priorityRank}. {card.title}
+                  </p>
+                  <p className="text-xs text-sage-600 mt-1 leading-relaxed">{card.detail}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Summary */}
         <div className="flex flex-wrap gap-3 mb-4">
           <div className="flex items-center gap-1.5 text-sm text-sage-700 bg-sage-50 rounded-lg px-3 py-1.5">
@@ -147,10 +213,14 @@ export default function TransportSection({ plan, direction, venueName }: Transpo
                     leg.stepByStepInstructions &&
                     leg.stepByStepInstructions.length > 0 && (
                       <button
-                        onClick={() => setExpanded((e) => !e)}
+                        onClick={() =>
+                          setExpandedLegIndex((current) =>
+                            current === i ? null : i
+                          )
+                        }
                         className="mt-1.5 text-xs text-sage-500 flex items-center gap-1 hover:text-sage-700 focus-calm"
                       >
-                        {expanded ? (
+                        {expandedLegIndex === i ? (
                           <>
                             <ChevronUp className="w-3 h-3" /> Hide directions
                           </>
@@ -162,7 +232,7 @@ export default function TransportSection({ plan, direction, venueName }: Transpo
                       </button>
                     )}
 
-                  {expanded &&
+                  {expandedLegIndex === i &&
                     leg.stepByStepInstructions?.map((step, si) => (
                       <p key={si} className="text-xs text-sage-600 mt-1 ml-2">
                         {si + 1}. {step}

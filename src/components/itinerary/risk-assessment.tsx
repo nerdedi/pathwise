@@ -8,9 +8,19 @@ interface RiskAssessmentProps {
   score: number;
   summary: string;
   details: Record<string, { score: number; detail: string }>;
+  venueRiskFactors?: string[];
+  safetyNotes?: string[];
+  emergencyExits?: string[];
 }
 
-export default function RiskAssessment({ score, summary, details }: RiskAssessmentProps) {
+export default function RiskAssessment({
+  score,
+  summary,
+  details,
+  venueRiskFactors = [],
+  safetyNotes = [],
+  emergencyExits = [],
+}: RiskAssessmentProps) {
   const { label, color, bg } = riskScoreLabel(score);
 
   return (
@@ -81,6 +91,58 @@ export default function RiskAssessment({ score, summary, details }: RiskAssessme
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {(venueRiskFactors.length > 0 || safetyNotes.length > 0 || emergencyExits.length > 0) && (
+          <div className="mt-5 space-y-4 border-t border-sage-100 pt-4">
+            <p className="text-xs font-semibold text-sage-600 uppercase tracking-wide">
+              Venue-specific planning notes
+            </p>
+
+            {venueRiskFactors.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-sage-800 mb-2">Possible risk factors</p>
+                <ul className="space-y-1.5">
+                  {venueRiskFactors.map((factor) => (
+                    <li key={factor} className="flex gap-2 text-sm text-sage-700">
+                      <span className="text-sage-400 mt-0.5">•</span>
+                      <span>{factor}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {safetyNotes.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-sage-800 mb-2">Safety notes</p>
+                <ul className="space-y-1.5">
+                  {safetyNotes.map((note) => (
+                    <li key={note} className="flex gap-2 text-sm text-sage-700">
+                      <span className="text-sage-400 mt-0.5">•</span>
+                      <span>{note}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {emergencyExits.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-sage-800 mb-2">Emergency exits</p>
+                <div className="flex flex-wrap gap-2">
+                  {emergencyExits.map((exit) => (
+                    <span
+                      key={exit}
+                      className="rounded-full border border-sage-200 bg-white px-3 py-1 text-xs text-sage-700"
+                    >
+                      {exit}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

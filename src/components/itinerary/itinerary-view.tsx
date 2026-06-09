@@ -27,9 +27,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import AffirmationCard from "./affirmation-card";
+import FoodOptions from "./food-options";
 import OverwhelmedPlan from "./overwhelmed-plan";
 import PackingList from "./packing-list";
 import RiskAssessment from "./risk-assessment";
+import SafetySummary from "./safety-summary";
 import SupportToolkit from "./support-toolkit";
 import TransportSection from "./transport-section";
 import VenueMap from "./venue-map";
@@ -531,6 +533,12 @@ export default function ItineraryView({
       )}
 
       <div className="space-y-5" ref={printRef}>
+        <SafetySummary
+          riskSummary={draftItinerary.riskSummary}
+          venueRiskFactors={venue.riskFactors}
+          emergencyExits={venue.emergencyExits}
+        />
+
         {/* Venue map */}
         {venue.location && venue.facilities && (
           <Card>
@@ -556,28 +564,35 @@ export default function ItineraryView({
             !canManageCollaborators && lockedSectionIds.includes(section.id);
 
           return (
-            <SectionCard
-              key={section.id}
-              section={section}
-              editable={allowEditing && editMode && !isLockedForCollaborator}
-              readOnlyReason={
-                isLockedForCollaborator
-                  ? "This section is locked by the guide owner."
-                  : undefined
-              }
-              lockable={allowEditing && editMode && canManageCollaborators}
-              locked={lockedSectionIds.includes(section.id)}
-              onToggleLock={(locked) => toggleSectionLock(section.id, locked)}
-              onUpdate={(patch) => updateSection(section.id, patch)}
-              onRegenerate={() => regenerateSection(section.id)}
-              regenerating={
-                allowEditing &&
-                regeneratingSectionId === section.id &&
-                !isLockedForCollaborator
-              }
-            />
+            <div key={section.id} className="space-y-5">
+              <SectionCard
+                section={section}
+                editable={allowEditing && editMode && !isLockedForCollaborator}
+                readOnlyReason={
+                  isLockedForCollaborator
+                    ? "This section is locked by the guide owner."
+                    : undefined
+                }
+                lockable={allowEditing && editMode && canManageCollaborators}
+                locked={lockedSectionIds.includes(section.id)}
+                onToggleLock={(locked) => toggleSectionLock(section.id, locked)}
+                onUpdate={(patch) => updateSection(section.id, patch)}
+                onRegenerate={() => regenerateSection(section.id)}
+                regenerating={
+                  allowEditing &&
+                  regeneratingSectionId === section.id &&
+                  !isLockedForCollaborator
+                }
+              />
+              {section.id === "eating-drinking" && venue.cafeterias.length > 0 && (
+                <FoodOptions cafeterias={venue.cafeterias} />
+              )}
+            </div>
           );
         })}
+
+        {!draftItinerary.sections.some((section) => section.id === "eating-drinking") &&
+          venue.cafeterias.length > 0 && <FoodOptions cafeterias={venue.cafeterias} />}
 
         {canManageCollaborators && (
           <Card>
@@ -754,6 +769,9 @@ export default function ItineraryView({
             plan={draftItinerary.transportTo}
             direction="to"
             venueName={venue.name}
+            supportCardName={draftItinerary.sensoryProfile.supportCardName}
+            supportCardMessage={draftItinerary.sensoryProfile.supportCardMessage}
+            emergencyContacts={draftItinerary.sensoryProfile.emergencyContacts}
           />
         )}
         {draftItinerary.transportFrom && (
@@ -761,6 +779,9 @@ export default function ItineraryView({
             plan={draftItinerary.transportFrom}
             direction="from"
             venueName={venue.name}
+            supportCardName={draftItinerary.sensoryProfile.supportCardName}
+            supportCardMessage={draftItinerary.sensoryProfile.supportCardMessage}
+            emergencyContacts={draftItinerary.sensoryProfile.emergencyContacts}
           />
         )}
 
@@ -801,6 +822,9 @@ export default function ItineraryView({
           score={draftItinerary.riskScore}
           summary={draftItinerary.riskSummary}
           details={draftItinerary.riskDetails}
+          venueRiskFactors={venue.riskFactors}
+          safetyNotes={venue.safetyNotes}
+          emergencyExits={venue.emergencyExits}
         />
 
         {/* Venue contact */}

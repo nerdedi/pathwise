@@ -65,13 +65,20 @@ Focus especially on:
 - Quiet rooms, prayer rooms, sensory spaces
 - Lift and stair locations with floor descriptions
 - Help desk / information point locations
-- Cafeteria/café menus with allergen and dietary info
+- Cafeteria/café menus with item names, prices, allergen and dietary info
 - Parking, drop-off, accessible parking details
 - Emergency exits and first aid locations
 - Sensory environment descriptions (lighting, sound, smell, crowd levels)
 - Phone numbers and email contacts for accessibility queries
 - Peak times and quiet times
 - What people do and see there
+
+Important extraction details:
+- When a venue map, PDF, access guide, or floorplan gives location clues, include them in facility descriptions and floor fields.
+- If precise coordinates for facilities are available, include them in each facility.location.
+- If the site describes walking routes or how to reach a feature (e.g. "turn left after entry", "near gallery 3"), include that guidance in the facility description.
+- For cafés and food courts, include as many real menu items and prices as you can find.
+- Include venue-specific risk factors, safety notes, and emergency exit information whenever the site provides them.
 
 If information is not available on the website, use reasonable estimates based on the venue type and mark them clearly with a "(estimated)" suffix.
 Provide accessibility contact details if available, or suggest the venue's main contact number.
@@ -128,6 +135,10 @@ Guidelines:
 8. Affirmations should be warm, genuine, and not condescending
 9. Risk score: 1 (very calm) to 10 (very stimulating) — be honest but frame constructively
 10. Social story panels should use very simple sentences, present tense, first person
+11. Social story panels should be interactive-friendly: each panel should have a short speakText, a sensoryCue when relevant, a supportTip, and a few simple keywords
+12. Where feasible, include translations in Spanish (es), Arabic (ar), and Simplified Chinese (zh) under a translations object for each social story panel
+13. In transport-related sections, prioritise these supports in concise language: first/last mile guidance, stop alerts, disruption rerouting, missed-stop recovery, crowd-aware alternatives, leave-on-time reminders, live ETA updates, and panic-contact options
+14. Keep transport instructions brief, consistent, and icon-friendly (short labels and one-sentence detail lines)
 
 Return valid JSON matching the Itinerary TypeScript type (sections, packingList, crisisPlan, affirmations, socialStory, riskScore, riskSummary, riskDetails).
 `.trim();
@@ -146,8 +157,14 @@ Rules for social stories:
 - Include what the person might see, hear, and feel — normalise these experiences
 - Always include a panel about what to do if feeling overwhelmed
 - End with a positive, reinforcing panel
-- Each panel: { sequence, title, text, imagePrompt, emotion }
+- Each panel: { sequence, title, text, imagePrompt, emotion, sensoryCue, supportTip, speakText, keywords }
+- Add optional panel translations: translations: { es?: {...}, ar?: {...}, zh?: {...} }
 - imagePrompt should describe a simple, calm illustration suitable for the panel
+- speakText should be a short version that sounds natural when spoken aloud
+- sensoryCue should describe the main sensory expectation in one short sentence if relevant
+- supportTip should be one practical, kind support strategy
+- keywords should be 2-4 quick visual cue words
+- For each translation object, include title, text, and (if possible) speakText, sensoryCue, supportTip, keywords
 - Generate 8–14 panels
 
 Return a JSON array of SocialStoryPanel objects.

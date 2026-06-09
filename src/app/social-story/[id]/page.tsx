@@ -68,6 +68,8 @@ export default function SocialStoryPage() {
       panels={itinerary.socialStory}
       venueName={itinerary.venueData.name}
       itineraryId={itinerary.id}
+      quietTimes={itinerary.venueData.quietTimes}
+      supportReminders={itinerary.crisisPlan.selfCareReminders}
     />
   );
 }

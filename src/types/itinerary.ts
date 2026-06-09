@@ -78,6 +78,21 @@ export interface PackingItem {
   category: "sensory" | "comfort" | "medical" | "practical" | "food";
 }
 
+export type SocialStoryLanguage = "en" | "es" | "ar" | "zh";
+
+export interface SocialStoryTranslationContent {
+  title?: string;
+  text: string;
+  sensoryCue?: string;
+  supportTip?: string;
+  speakText?: string;
+  keywords?: string[];
+}
+
+export type SocialStoryTranslation = Partial<
+  Record<SocialStoryLanguage, SocialStoryTranslationContent>
+>;
+
 export interface SocialStoryPanel {
   sequence: number;
   title: string;
@@ -85,6 +100,11 @@ export interface SocialStoryPanel {
   imagePrompt?: string; // For AI image generation
   imageUrl?: string;
   emotion?: "calm" | "curious" | "happy" | "uncertain" | "proud";
+  sensoryCue?: string;
+  supportTip?: string;
+  speakText?: string;
+  keywords?: string[];
+  translations?: SocialStoryTranslation;
 }
 
 export interface CrisisPlan {

@@ -20,6 +20,8 @@ type GuideSummary = {
 export default function GuidesPage() {
   const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [authMessage, setAuthMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -126,8 +128,48 @@ export default function GuidesPage() {
     };
   }, [supabase]);
 
-  const sendMagicLink = async (e: React.FormEvent) => {
+  const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSending(true);
+    setAuthMessage("");
+    setError("");
+
+    try {
+      if (authMode === "login") {
+        const { error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (authError) throw authError;
+        setAuthMessage("Signed in successfully.");
+      } else {
+        if (password.length < 8) {
+          throw new Error("Use at least 8 characters for your password.");
+        }
+
+        const { error: authError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo:
+              typeof window !== "undefined"
+                ? `${window.location.origin}/auth/callback?next=/guides`
+                : undefined,
+          },
+        });
+
+        if (authError) throw authError;
+        setAuthMessage("Account created. You can sign in now, or check your email if confirmation is required.");
+      }
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "Authentication failed");
+    }
+
+    setIsSending(false);
+  };
+
+  const sendMagicLink = async () => {
     setIsSending(true);
     setAuthMessage("");
     setError("");
@@ -213,9 +255,41 @@ export default function GuidesPage() {
 
         {!userEmail && (
           <form
-            onSubmit={sendMagicLink}
+            onSubmit={handleEmailAuth}
             className="bg-white border border-sage-100 rounded-2xl shadow-sm p-5 space-y-4"
           >
+            <div className="flex rounded-xl bg-sage-50 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("login");
+                  setError("");
+                  setAuthMessage("");
+                }}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  authMode === "login"
+                    ? "bg-white text-sage-800 shadow-sm"
+                    : "text-sage-500 hover:text-sage-700"
+                }`}
+              >
+                Log in
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("signup");
+                  setError("");
+                  setAuthMessage("");
+                }}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  authMode === "signup"
+                    ? "bg-white text-sage-800 shadow-sm"
+                    : "text-sage-500 hover:text-sage-700"
+                }`}
+              >
+                Create account
+              </button>
+            </div>
             <Input
               type="email"
               label="Email"
@@ -224,8 +298,31 @@ export default function GuidesPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
             />
+            <Input
+              type="password"
+              label="Password"
+              placeholder={authMode === "login" ? "Enter your password" : "At least 8 characters"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
             <Button type="submit" disabled={isSending} className="w-full">
-              {isSending ? "Sending magic link…" : "Sign in with magic link"}
+              {isSending
+                ? authMode === "login"
+                  ? "Logging in…"
+                  : "Creating account…"
+                : authMode === "login"
+                  ? "Log in with password"
+                  : "Create account"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSending || !email}
+              className="w-full"
+              onClick={sendMagicLink}
+            >
+              Email me a magic link instead
             </Button>
             {authMessage && (
               <p className="text-sm text-sage-700 bg-sage-50 border border-sage-200 rounded-xl px-3 py-2">

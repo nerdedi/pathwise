@@ -1,5 +1,7 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
+import { createClient } from "@/lib/supabase/client";
 import type { SensoryProfile } from "@/types/sensory-profile";
 import { defaultSensoryProfile } from "@/types/sensory-profile";
 import { AnimatePresence, motion } from "framer-motion";
@@ -14,8 +16,9 @@ import {
     Volume2,
     Wind,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Step = {
   id: string;
@@ -142,10 +145,19 @@ function CheckOption({
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
   const [currentStep, setCurrentStep] = useState(0);
   const [profile, setProfile] = useState<SensoryProfile>(defaultSensoryProfile);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [finishing, setFinishing] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<"signup" | "login">("signup");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
 
   const update = <K extends keyof SensoryProfile>(key: K, value: SensoryProfile[K]) => {
     setProfile((prev) => ({ ...prev, [key]: value }));
@@ -167,8 +179,18 @@ export default function OnboardingPage() {
   };
 
   useEffect(() => {
+    let mounted = true;
+
     const loadProfile = async () => {
       try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!mounted) return;
+
+        setUserEmail(user?.email ?? null);
+
         // Always try local first for instant UX
         const stored = localStorage.getItem("pathwise_sensory_profile");
         if (stored) {
@@ -199,7 +221,72 @@ export default function OnboardingPage() {
     };
 
     loadProfile();
-  }, []);
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setUserEmail(session?.user?.email ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  const handleAccountSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setAuthLoading(true);
+    setAuthError("");
+    setAuthMessage("");
+
+    try {
+      if (authMode === "signup") {
+        if (authPassword.length < 8) {
+          throw new Error("Use at least 8 characters for your password.");
+        }
+
+        if (authPassword !== confirmPassword) {
+          throw new Error("Your passwords do not match.");
+        }
+
+        const { data, error } = await supabase.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+          options: {
+            emailRedirectTo:
+              typeof window !== "undefined"
+                ? `${window.location.origin}/auth/callback?next=/onboarding`
+                : undefined,
+          },
+        });
+
+        if (error) throw error;
+
+        if (data.session || data.user?.email) {
+          setUserEmail(data.user?.email ?? authEmail);
+          setAuthMessage("Account created. Let’s personalise your profile.");
+        } else {
+          setAuthMessage("Check your email to confirm your account, then come back to finish your profile.");
+        }
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword,
+        });
+
+        if (error) throw error;
+
+        setUserEmail(data.user.email ?? authEmail);
+        setAuthMessage("Signed in. You can continue with your profile now.");
+      }
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Authentication failed.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   const handleFinish = async () => {
     setFinishing(true);
@@ -233,6 +320,125 @@ export default function OnboardingPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-sage-50 to-white">
         <Loader2 className="w-6 h-6 text-sage-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!userEmail) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-sage-50 to-white flex items-center justify-center px-4 py-10">
+        <div className="w-full max-w-md bg-white rounded-3xl border border-sage-100 shadow-sm p-6 sm:p-8">
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-14 h-14 bg-sage-100 rounded-2xl mb-4">
+              <Heart className="w-7 h-7 text-sage-500" />
+            </div>
+            <h1 className="text-2xl font-bold text-sage-900">
+              {authMode === "signup" ? "Create your Pathwise profile" : "Log in to continue"}
+            </h1>
+            <p className="text-sm text-sage-600 mt-2 leading-relaxed">
+              {authMode === "signup"
+                ? "Set up your account with an email and password first, then we’ll tailor your sensory profile."
+                : "Sign in with your email and password to edit your profile and saved guides."}
+            </p>
+          </div>
+
+          <div className="flex rounded-xl bg-sage-50 p-1 mb-5">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("signup");
+                setAuthError("");
+                setAuthMessage("");
+              }}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                authMode === "signup"
+                  ? "bg-white text-sage-800 shadow-sm"
+                  : "text-sage-500 hover:text-sage-700"
+              }`}
+            >
+              Create account
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("login");
+                setAuthError("");
+                setAuthMessage("");
+              }}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                authMode === "login"
+                  ? "bg-white text-sage-800 shadow-sm"
+                  : "text-sage-500 hover:text-sage-700"
+              }`}
+            >
+              Log in
+            </button>
+          </div>
+
+          <form onSubmit={handleAccountSubmit} className="space-y-4">
+            <Input
+              type="email"
+              label="Email"
+              placeholder="you@example.com"
+              value={authEmail}
+              onChange={(e) => setAuthEmail(e.target.value)}
+              required
+            />
+            <Input
+              type="password"
+              label="Password"
+              placeholder={authMode === "signup" ? "At least 8 characters" : "Enter your password"}
+              value={authPassword}
+              onChange={(e) => setAuthPassword(e.target.value)}
+              required
+            />
+            {authMode === "signup" && (
+              <Input
+                type="password"
+                label="Confirm password"
+                placeholder="Re-enter your password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
+            )}
+
+            {authError && (
+              <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                {authError}
+              </p>
+            )}
+            {authMessage && (
+              <p className="text-sm text-sage-700 bg-sage-50 border border-sage-200 rounded-xl px-4 py-3">
+                {authMessage}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={authLoading}
+              className="w-full flex items-center justify-center gap-2 bg-sage-600 hover:bg-sage-700 disabled:opacity-70 text-white px-5 py-3 rounded-xl font-semibold text-sm transition-colors focus-calm"
+            >
+              {authLoading
+                ? authMode === "signup"
+                  ? "Creating account…"
+                  : "Logging in…"
+                : authMode === "signup"
+                  ? "Create account"
+                  : "Log in"}
+              {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+            </button>
+          </form>
+
+          <div className="mt-5 text-center space-y-2">
+            <p className="text-xs text-sage-500">
+              Prefer to browse first? You can still <Link href="/plan" className="underline underline-offset-4">skip straight to planning</Link>.
+            </p>
+            <p className="text-xs text-sage-500">
+              Want your saved guides instead? <Link href="/guides" className="underline underline-offset-4">Go to login</Link>.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
