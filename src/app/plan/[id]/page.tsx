@@ -11,6 +11,7 @@ export default function ItineraryPage() {
   const params = useParams<{ id: string }>();
   const [itinerary, setItinerary] = useState<Itinerary | null>(null);
   const [error, setError] = useState("");
+  const [requiresSignIn, setRequiresSignIn] = useState(false);
   const [canEdit, setCanEdit] = useState(true);
   const [canManageCollaborators, setCanManageCollaborators] = useState(true);
 
@@ -38,7 +39,8 @@ export default function ItineraryPage() {
         }
 
         if (res.status === 401) {
-          setError("This saved guide requires sign-in. Open My Guides to log in.");
+          setRequiresSignIn(true);
+          setError(stored ? "" : "This saved guide requires sign-in. Open My Guides to log in.");
           return;
         }
 
@@ -51,16 +53,28 @@ export default function ItineraryPage() {
     load();
   }, [params.id]);
 
-  if (error) {
+  if (error && !(requiresSignIn && itinerary)) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4 text-center">
-        <p className="text-sage-700 mb-4">{error}</p>
-        <Link
-          href="/plan"
-          className="text-sage-600 underline text-sm"
-        >
-          Create a new guide
-        </Link>
+      <div className="min-h-screen flex items-center justify-center px-4 py-8">
+        <div className="w-full max-w-md rounded-2xl border border-sage-100 bg-white p-6 text-center shadow-sm">
+          <p className="text-sage-700 mb-4">{error}</p>
+          <div className="flex flex-col gap-2">
+            {requiresSignIn && (
+              <Link
+                href="/guides"
+                className="inline-flex items-center justify-center rounded-xl bg-sage-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sage-700"
+              >
+                Open My Guides (log in)
+              </Link>
+            )}
+            <Link
+              href="/plan"
+              className="inline-flex items-center justify-center rounded-xl border border-sage-200 px-4 py-2.5 text-sm font-medium text-sage-700 hover:bg-sage-50"
+            >
+              Create a new guide
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
@@ -89,6 +103,30 @@ export default function ItineraryPage() {
         </div>
         <div className="w-20" />
       </nav>
+
+      {requiresSignIn && itinerary && (
+        <div className="no-print border-b border-warm-100 bg-warm-50 px-4 py-3">
+          <div className="mx-auto flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-warm-800">
+              You’re viewing the local copy on this device. Sign in to sync edits and reopen cloud-saved guides.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/guides"
+                className="inline-flex items-center justify-center rounded-xl bg-sage-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sage-700"
+              >
+                Open My Guides
+              </Link>
+              <Link
+                href="/onboarding"
+                className="inline-flex items-center justify-center rounded-xl border border-warm-200 px-4 py-2 text-sm font-medium text-warm-800 hover:bg-warm-100"
+              >
+                Use test login
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ItineraryView
         itinerary={itinerary}

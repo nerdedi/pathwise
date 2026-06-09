@@ -1,7 +1,14 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
+import {
+    LOCAL_TEST_EMAIL,
+    LOCAL_TEST_PASSWORD,
+    isLikelyAuthInfrastructureIssue,
+    persistLocalTestLogin,
+} from "@/lib/local-auth";
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseAuthConfigured } from "@/lib/supabase/config";
 import type { SensoryProfile } from "@/types/sensory-profile";
 import { defaultSensoryProfile } from "@/types/sensory-profile";
 import { AnimatePresence, motion } from "framer-motion";
@@ -146,6 +153,7 @@ function CheckOption({
 export default function OnboardingPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const authConfigured = useMemo(() => isSupabaseAuthConfigured(), []);
   const [currentStep, setCurrentStep] = useState(0);
   const [profile, setProfile] = useState<SensoryProfile>(defaultSensoryProfile);
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -158,6 +166,23 @@ export default function OnboardingPage() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
+
+  const useLocalTestLogin = (email = LOCAL_TEST_EMAIL, password = LOCAL_TEST_PASSWORD) => {
+    if (password.length < 8) {
+      throw new Error("Use at least 8 characters for your password.");
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !normalizedEmail.includes("@")) {
+      throw new Error("Enter a valid email address.");
+    }
+
+    persistLocalTestLogin(normalizedEmail);
+    setUserEmail(normalizedEmail);
+    setAuthMessage(
+      "Local test login enabled. Your profile will save on this device (cloud sync is off until Supabase is configured)."
+    );
+  };
 
   const update = <K extends keyof SensoryProfile>(key: K, value: SensoryProfile[K]) => {
     setProfile((prev) => ({ ...prev, [key]: value }));
@@ -180,8 +205,18 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     let mounted = true;
+    let subscription: { unsubscribe: () => void } | null = null;
 
     const loadProfile = async () => {
+      if (!authConfigured) {
+        const localEmail = localStorage.getItem("pathwise_local_user_email");
+        if (mounted) {
+          setUserEmail(localEmail);
+          setLoadingProfile(false);
+        }
+        return;
+      }
+
       try {
         const {
           data: { user },
@@ -222,18 +257,19 @@ export default function OnboardingPage() {
 
     loadProfile();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return;
-      setUserEmail(session?.user?.email ?? null);
-    });
+    if (authConfigured) {
+      const authListener = supabase.auth.onAuthStateChange((_event, session) => {
+        if (!mounted) return;
+        setUserEmail(session?.user?.email ?? null);
+      });
+      subscription = authListener.data.subscription;
+    }
 
     return () => {
       mounted = false;
-      subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
-  }, [supabase]);
+  }, [supabase, authConfigured]);
 
   const handleAccountSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -242,6 +278,11 @@ export default function OnboardingPage() {
     setAuthMessage("");
 
     try {
+      if (!authConfigured) {
+        useLocalTestLogin(authEmail, authPassword);
+        return;
+      }
+
       if (authMode === "signup") {
         if (authPassword.length < 8) {
           throw new Error("Use at least 8 characters for your password.");
@@ -282,6 +323,22 @@ export default function OnboardingPage() {
         setAuthMessage("Signed in. You can continue with your profile now.");
       }
     } catch (error) {
+      if (process.env.NODE_ENV !== "production" && isLikelyAuthInfrastructureIssue(error)) {
+        try {
+          useLocalTestLogin(authEmail || LOCAL_TEST_EMAIL, authPassword || LOCAL_TEST_PASSWORD);
+          setAuthError("");
+          setAuthMessage(
+            "Supabase auth wasn’t reachable, so Pathwise switched to local test login for this device."
+          );
+          return;
+        } catch (localLoginError) {
+          setAuthError(
+            localLoginError instanceof Error ? localLoginError.message : "Authentication failed."
+          );
+          return;
+        }
+      }
+
       setAuthError(error instanceof Error ? error.message : "Authentication failed.");
     } finally {
       setAuthLoading(false);
@@ -376,6 +433,11 @@ export default function OnboardingPage() {
           </div>
 
           <form onSubmit={handleAccountSubmit} className="space-y-4">
+            {!authConfigured && (
+              <p className="text-sm text-warm-700 bg-warm-50 border border-warm-200 rounded-xl px-4 py-3">
+                Auth backend isn&rsquo;t configured in this environment yet. You can still continue with a local test login.
+              </p>
+            )}
             <Input
               type="email"
               label="Email"
@@ -423,11 +485,27 @@ export default function OnboardingPage() {
                 ? authMode === "signup"
                   ? "Creating account…"
                   : "Logging in…"
-                : authMode === "signup"
+                : !authConfigured
+                  ? "Continue with local test login"
+                  : authMode === "signup"
                   ? "Create account"
                   : "Log in"}
               {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
             </button>
+
+            {(process.env.NODE_ENV !== "production" || !authConfigured) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthEmail(LOCAL_TEST_EMAIL);
+                  setAuthPassword(LOCAL_TEST_PASSWORD);
+                  setConfirmPassword(LOCAL_TEST_PASSWORD);
+                }}
+                className="w-full text-xs text-sage-600 underline underline-offset-4"
+              >
+                Use test credentials (test@pathwise.local / pathwise123)
+              </button>
+            )}
           </form>
 
           <div className="mt-5 text-center space-y-2">

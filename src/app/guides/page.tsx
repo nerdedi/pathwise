@@ -2,7 +2,15 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+    LOCAL_TEST_EMAIL,
+    LOCAL_TEST_PASSWORD,
+    clearLocalTestLogin,
+    isLikelyAuthInfrastructureIssue,
+    persistLocalTestLogin,
+} from "@/lib/local-auth";
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseAuthConfigured } from "@/lib/supabase/config";
 import { Calendar, Copy, Globe, LogOut, MapPin, Save, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -19,6 +27,7 @@ type GuideSummary = {
 
 export default function GuidesPage() {
   const supabase = useMemo(() => createClient(), []);
+  const authConfigured = useMemo(() => isSupabaseAuthConfigured(), []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
@@ -31,6 +40,21 @@ export default function GuidesPage() {
   const [query, setQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
+
+  const useLocalTestLogin = (nextEmail = LOCAL_TEST_EMAIL, passwordValue = LOCAL_TEST_PASSWORD) => {
+    if (passwordValue.length < 8) {
+      throw new Error("Use at least 8 characters for your password.");
+    }
+
+    const normalizedEmail = nextEmail.trim().toLowerCase();
+    if (!normalizedEmail || !normalizedEmail.includes("@")) {
+      throw new Error("Enter a valid email address.");
+    }
+
+    persistLocalTestLogin(normalizedEmail);
+    setUserEmail(normalizedEmail);
+    setAuthMessage("Local test login enabled. Cloud-synced guides need Supabase configuration.");
+  };
   const toggleShare = async (id: string, nextValue: boolean) => {
     setSharingId(id);
     try {
@@ -90,8 +114,16 @@ export default function GuidesPage() {
 
   useEffect(() => {
     let mounted = true;
+    let subscription: { unsubscribe: () => void } | null = null;
 
     const init = async () => {
+      if (!authConfigured) {
+        if (!mounted) return;
+        setUserEmail(localStorage.getItem("pathwise_local_user_email"));
+        setLoading(false);
+        return;
+      }
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -109,24 +141,26 @@ export default function GuidesPage() {
 
     init();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!mounted) return;
-      setUserEmail(session?.user?.email ?? null);
-      if (session?.user) {
-        await loadGuides();
-      } else {
-        setGuides([]);
-        setLoading(false);
-      }
-    });
+    if (authConfigured) {
+      const authListener = supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (!mounted) return;
+        setUserEmail(session?.user?.email ?? null);
+        if (session?.user) {
+          await loadGuides();
+        } else {
+          setGuides([]);
+          setLoading(false);
+        }
+      });
+
+      subscription = authListener.data.subscription;
+    }
 
     return () => {
       mounted = false;
-      subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
-  }, [supabase]);
+  }, [supabase, authConfigured]);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,6 +169,11 @@ export default function GuidesPage() {
     setError("");
 
     try {
+      if (!authConfigured) {
+        useLocalTestLogin(email, password);
+        return;
+      }
+
       if (authMode === "login") {
         const { error: authError } = await supabase.auth.signInWithPassword({
           email,
@@ -163,6 +202,22 @@ export default function GuidesPage() {
         setAuthMessage("Account created. You can sign in now, or check your email if confirmation is required.");
       }
     } catch (authError) {
+      if (process.env.NODE_ENV !== "production" && isLikelyAuthInfrastructureIssue(authError)) {
+        try {
+          useLocalTestLogin(email || LOCAL_TEST_EMAIL, password || LOCAL_TEST_PASSWORD);
+          setError("");
+          setAuthMessage(
+            "Supabase auth wasn’t reachable, so Pathwise switched to local test login for this device."
+          );
+          setIsSending(false);
+          return;
+        } catch (localLoginError) {
+          setError(localLoginError instanceof Error ? localLoginError.message : "Authentication failed");
+          setIsSending(false);
+          return;
+        }
+      }
+
       setError(authError instanceof Error ? authError.message : "Authentication failed");
     }
 
@@ -173,6 +228,12 @@ export default function GuidesPage() {
     setIsSending(true);
     setAuthMessage("");
     setError("");
+
+    if (!authConfigured) {
+      setError("Magic links require Supabase auth configuration. Use local test login or configure Supabase.");
+      setIsSending(false);
+      return;
+    }
 
     const { error: authError } = await supabase.auth.signInWithOtp({
       email,
@@ -194,7 +255,11 @@ export default function GuidesPage() {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    if (authConfigured) {
+      await supabase.auth.signOut();
+    } else {
+      clearLocalTestLogin();
+    }
     setUserEmail(null);
     setGuides([]);
   };
@@ -258,6 +323,11 @@ export default function GuidesPage() {
             onSubmit={handleEmailAuth}
             className="bg-white border border-sage-100 rounded-2xl shadow-sm p-5 space-y-4"
           >
+            {!authConfigured && (
+              <p className="text-sm text-warm-700 bg-warm-50 border border-warm-200 rounded-xl px-4 py-3">
+                Supabase auth isn&rsquo;t configured in this environment, so email/password currently runs in local test mode.
+              </p>
+            )}
             <div className="flex rounded-xl bg-sage-50 p-1">
               <button
                 type="button"
@@ -311,7 +381,9 @@ export default function GuidesPage() {
                 ? authMode === "login"
                   ? "Logging in…"
                   : "Creating account…"
-                : authMode === "login"
+                : !authConfigured
+                  ? "Continue with local test login"
+                  : authMode === "login"
                   ? "Log in with password"
                   : "Create account"}
             </Button>
@@ -324,6 +396,18 @@ export default function GuidesPage() {
             >
               Email me a magic link instead
             </Button>
+            {(process.env.NODE_ENV !== "production" || !authConfigured) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail(LOCAL_TEST_EMAIL);
+                  setPassword(LOCAL_TEST_PASSWORD);
+                }}
+                className="w-full text-xs text-sage-600 underline underline-offset-4"
+              >
+                Use test credentials (test@pathwise.local / pathwise123)
+              </button>
+            )}
             {authMessage && (
               <p className="text-sm text-sage-700 bg-sage-50 border border-sage-200 rounded-xl px-3 py-2">
                 {authMessage}
