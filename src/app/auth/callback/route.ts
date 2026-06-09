@@ -1,11 +1,12 @@
+import { getSafeInternalRedirectPath } from "@/lib/redirect";
 import { isSupabaseAuthConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
-  const next = requestUrl.searchParams.get("next") ?? "/guides";
-  const code = request.nextUrl.searchParams.get("code");
+  const next = requestUrl.searchParams.get("next");
+  const code = requestUrl.searchParams.get("code");
 
   if (isSupabaseAuthConfigured() && code) {
     try {
@@ -16,6 +17,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const redirectUrl = new URL(next.startsWith("/") ? next : "/guides", requestUrl.origin);
+  const redirectPath = getSafeInternalRedirectPath(next);
+  const redirectUrl = new URL(redirectPath, requestUrl.origin);
   return NextResponse.redirect(redirectUrl);
 }

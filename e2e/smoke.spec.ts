@@ -1,0 +1,31 @@
+import { expect, test } from "@playwright/test";
+
+test.describe("public smoke routes", () => {
+  test("landing page renders the hero and primary CTAs", async ({ page }) => {
+    await page.goto("/");
+
+    await expect(
+      page.getByRole("heading", { name: /Know what to expect/i })
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: /Create new profile/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Log in/i }).first()).toBeVisible();
+  });
+
+  test("onboarding page loads its first step", async ({ page }) => {
+    await page.goto("/onboarding");
+
+    await expect(
+      page.getByRole("heading", { name: /Welcome to Pathwise/i })
+    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Your senses/i })).toBeVisible();
+  });
+
+  test("plan page renders the venue URL form", async ({ page }) => {
+    await page.goto("/plan");
+
+    await expect(
+      page.getByRole("heading", { name: /Where are you heading\?/i })
+    ).toBeVisible();
+    await expect(page.getByLabel(/Venue website URL/i)).toBeVisible();
+  });
+});
