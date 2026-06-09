@@ -1,5 +1,13 @@
 export type SensorySensitivity = "low" | "medium" | "high";
 
+export interface EmergencyContact {
+  name: string;
+  phone: string;
+  relationship?: string;
+}
+
+export type RoutePreference = "balanced" | "fastest" | "quietest";
+
 export interface SensoryProfile {
   id?: string;
   userId?: string;
@@ -35,6 +43,15 @@ export interface SensoryProfile {
   prefersReducedMotion: boolean;
   wantsSocialStory: boolean;
   wantsAffirmations: boolean;
+  wantsTextToSpeech: boolean;
+
+  // Travel + support
+  routePreference: RoutePreference;
+  needsLevelBoardingInfo: boolean;
+  needsLiveLiftInfo: boolean;
+  supportCardName: string;
+  supportCardMessage: string;
+  emergencyContacts: EmergencyContact[];
 
   createdAt?: string;
 }
@@ -62,4 +79,11 @@ export const defaultSensoryProfile: SensoryProfile = {
   prefersReducedMotion: false,
   wantsSocialStory: true,
   wantsAffirmations: true,
+  wantsTextToSpeech: true,
+  routePreference: "balanced",
+  needsLevelBoardingInfo: false,
+  needsLiveLiftInfo: false,
+  supportCardName: "",
+  supportCardMessage: "I may need a little extra time and clear instructions.",
+  emergencyContacts: [],
 };

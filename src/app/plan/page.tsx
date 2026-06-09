@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { defaultSensoryProfile } from "@/types/sensory-profile";
 import { ArrowRight, Calendar, Loader2, MapPin, Navigation } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -34,17 +35,23 @@ export default function PlanPage() {
       try {
         const stored = localStorage.getItem("pathwise_sensory_profile");
         if (stored) {
-          sensoryProfile = JSON.parse(stored);
+          sensoryProfile = {
+            ...defaultSensoryProfile,
+            ...JSON.parse(stored),
+          };
         } else {
           // Fallback to server profile for signed-in users
           const profileRes = await fetch("/api/profile", { cache: "no-store" });
           if (profileRes.ok) {
             const data = await profileRes.json();
             if (data.profile) {
-              sensoryProfile = data.profile;
+              sensoryProfile = {
+                ...defaultSensoryProfile,
+                ...data.profile,
+              };
               localStorage.setItem(
                 "pathwise_sensory_profile",
-                JSON.stringify(data.profile)
+                JSON.stringify(sensoryProfile)
               );
             }
           }
@@ -86,6 +93,10 @@ export default function PlanPage() {
       }
 
       const { itinerary } = await itinRes.json();
+
+      if (!Array.isArray(itinerary.sharedWithEmails)) {
+        itinerary.sharedWithEmails = [];
+      }
 
       // Store and redirect to itinerary view
       sessionStorage.setItem(`pathwise_itinerary_${itinerary.id}`, JSON.stringify(itinerary));

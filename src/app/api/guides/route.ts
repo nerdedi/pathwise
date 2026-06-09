@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
         itinerary_json: itinerary,
         risk_score: itinerary.riskScore,
         overall_sensory_rating: itinerary.venueData.overallSensoryRating,
+        shared_with_emails: itinerary.sharedWithEmails ?? [],
       },
       { onConflict: "id" }
     );

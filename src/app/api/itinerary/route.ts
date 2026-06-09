@@ -35,6 +35,13 @@ export async function POST(req: NextRequest) {
             destinationAddress: `${venue.address}, ${venue.suburb}`,
             date: visitDate.replace(/-/g, ""),
             time: "1000",
+            routePreference: profile.routePreference,
+            wheelchairRequired: profile.needsMobilityAccess || profile.usesMobilityAid,
+            needsLevelBoardingInfo: profile.needsLevelBoardingInfo,
+            needsLiveLiftInfo: profile.needsLiveLiftInfo,
+            needsOnboardToiletInfo: profile.hasMedicalNeeds,
+            crowdSensitivity: profile.crowdSensitivity,
+            soundSensitivity: profile.soundSensitivity,
           })
         : Promise.resolve(null),
       fromSuburb && visitDate
@@ -44,6 +51,13 @@ export async function POST(req: NextRequest) {
             date: visitDate.replace(/-/g, ""),
             time: "1500",
             arriveBy: false,
+            routePreference: profile.routePreference,
+            wheelchairRequired: profile.needsMobilityAccess || profile.usesMobilityAid,
+            needsLevelBoardingInfo: profile.needsLevelBoardingInfo,
+            needsLiveLiftInfo: profile.needsLiveLiftInfo,
+            needsOnboardToiletInfo: profile.hasMedicalNeeds,
+            crowdSensitivity: profile.crowdSensitivity,
+            soundSensitivity: profile.soundSensitivity,
           })
         : Promise.resolve(null),
     ]);
@@ -136,6 +150,7 @@ Do NOT wrap the output in any outer key like "itinerary". Return the flat object
       transportFrom:
         tripPlanFrom.status === "fulfilled" ? tripPlanFrom.value : null,
       generatedAt: new Date().toISOString(),
+      sharedWithEmails: [],
       ...normalizedAiData,
     };
 

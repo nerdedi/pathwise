@@ -151,13 +151,31 @@ export default function OnboardingPage() {
     setProfile((prev) => ({ ...prev, [key]: value }));
   };
 
+  const updateEmergencyContact = (
+    index: number,
+    field: "name" | "phone" | "relationship",
+    value: string
+  ) => {
+    setProfile((prev) => {
+      const next = [...prev.emergencyContacts];
+      while (next.length <= index) {
+        next.push({ name: "", phone: "", relationship: "" });
+      }
+      next[index] = { ...next[index], [field]: value };
+      return { ...prev, emergencyContacts: next };
+    });
+  };
+
   useEffect(() => {
     const loadProfile = async () => {
       try {
         // Always try local first for instant UX
         const stored = localStorage.getItem("pathwise_sensory_profile");
         if (stored) {
-          setProfile(JSON.parse(stored) as SensoryProfile);
+          setProfile({
+            ...defaultSensoryProfile,
+            ...(JSON.parse(stored) as SensoryProfile),
+          });
         }
 
         // Then try authenticated server profile (if signed in)
@@ -165,8 +183,12 @@ export default function OnboardingPage() {
         if (res.ok) {
           const data = await res.json();
           if (data.profile) {
-            setProfile(data.profile as SensoryProfile);
-            localStorage.setItem("pathwise_sensory_profile", JSON.stringify(data.profile));
+            const merged = {
+              ...defaultSensoryProfile,
+              ...(data.profile as SensoryProfile),
+            };
+            setProfile(merged);
+            localStorage.setItem("pathwise_sensory_profile", JSON.stringify(merged));
           }
         }
       } catch {
@@ -181,15 +203,21 @@ export default function OnboardingPage() {
 
   const handleFinish = async () => {
     setFinishing(true);
+    const cleanedProfile: SensoryProfile = {
+      ...profile,
+      emergencyContacts: profile.emergencyContacts.filter(
+        (contact) => contact.name.trim() && contact.phone.trim()
+      ),
+    };
     // Always keep local copy
-    localStorage.setItem("pathwise_sensory_profile", JSON.stringify(profile));
+    localStorage.setItem("pathwise_sensory_profile", JSON.stringify(cleanedProfile));
 
     // Best-effort save for authenticated users
     try {
       await fetch("/api/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile }),
+        body: JSON.stringify({ profile: cleanedProfile }),
       });
     } catch {
       // non-blocking
@@ -374,6 +402,31 @@ export default function OnboardingPage() {
                         </span>
                       </button>
                     ))}
+
+                    <p className="text-sm font-medium text-sage-800 mt-5 mb-3">
+                      Which route style helps most?
+                    </p>
+                    {(
+                      [
+                        { value: "balanced", label: "Balanced", description: "A calm mix of time and simplicity" },
+                        { value: "fastest", label: "Fastest", description: "Get there quickly" },
+                        { value: "quietest", label: "Quietest", description: "Prefer lower-stress, calmer travel" },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => update("routePreference", opt.value)}
+                        className={`w-full py-3 px-4 rounded-xl border-2 text-sm text-left transition-all focus-calm ${
+                          profile.routePreference === opt.value
+                            ? "border-sage-400 bg-sage-50"
+                            : "border-sage-100 bg-white hover:border-sage-200"
+                        }`}
+                        aria-pressed={profile.routePreference === opt.value}
+                      >
+                        <span className="font-medium text-sage-800">{opt.label}</span>
+                        <span className="block text-xs text-sage-500 mt-0.5">{opt.description}</span>
+                      </button>
+                    ))}
                   </div>
                 )}
 
@@ -406,6 +459,18 @@ export default function OnboardingPage() {
                       label="I have medical needs to consider"
                       description="We'll remind you of things like medication, first aid location"
                       onChange={(v) => update("hasMedicalNeeds", v)}
+                    />
+                    <CheckOption
+                      checked={profile.needsLevelBoardingInfo}
+                      label="I need level boarding information"
+                      description="Helpful for wheelchair users and easier boarding"
+                      onChange={(v) => update("needsLevelBoardingInfo", v)}
+                    />
+                    <CheckOption
+                      checked={profile.needsLiveLiftInfo}
+                      label="I need live lift status reminders"
+                      description="Show station lift reminders in transport plans"
+                      onChange={(v) => update("needsLiveLiftInfo", v)}
                     />
                   </div>
                 )}
@@ -440,6 +505,62 @@ export default function OnboardingPage() {
                       label="Reduced animations and motion"
                       onChange={(v) => update("prefersReducedMotion", v)}
                     />
+                    <CheckOption
+                      checked={profile.wantsTextToSpeech}
+                      label="Include text-to-speech support"
+                      description="Read support text aloud in overwhelming moments"
+                      onChange={(v) => update("wantsTextToSpeech", v)}
+                    />
+
+                    <div className="pt-3 space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-sage-800 mb-1">
+                          Support card name (optional)
+                        </label>
+                        <input
+                          value={profile.supportCardName}
+                          onChange={(e) => update("supportCardName", e.target.value)}
+                          placeholder="Your name"
+                          className="w-full h-11 rounded-xl border border-sage-200 px-4 text-sm bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-sage-800 mb-1">
+                          What should your support card say?
+                        </label>
+                        <textarea
+                          value={profile.supportCardMessage}
+                          onChange={(e) => update("supportCardMessage", e.target.value)}
+                          placeholder="I may need clear, calm instructions and a little extra time."
+                          className="w-full min-h-24 rounded-xl border border-sage-200 px-4 py-3 text-sm bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+                        />
+                      </div>
+                      {[0, 1].map((index) => (
+                        <div key={index} className="rounded-xl border border-sage-100 p-3 space-y-2">
+                          <p className="text-xs font-medium uppercase tracking-wide text-sage-500">
+                            Emergency contact {index + 1}
+                          </p>
+                          <input
+                            value={profile.emergencyContacts[index]?.name ?? ""}
+                            onChange={(e) => updateEmergencyContact(index, "name", e.target.value)}
+                            placeholder="Name"
+                            className="w-full h-10 rounded-xl border border-sage-200 px-3 text-sm bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+                          />
+                          <input
+                            value={profile.emergencyContacts[index]?.relationship ?? ""}
+                            onChange={(e) => updateEmergencyContact(index, "relationship", e.target.value)}
+                            placeholder="Relationship (optional)"
+                            className="w-full h-10 rounded-xl border border-sage-200 px-3 text-sm bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+                          />
+                          <input
+                            value={profile.emergencyContacts[index]?.phone ?? ""}
+                            onChange={(e) => updateEmergencyContact(index, "phone", e.target.value)}
+                            placeholder="Phone number"
+                            className="w-full h-10 rounded-xl border border-sage-200 px-3 text-sm bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

@@ -28,6 +28,19 @@ const ProfileSchema: z.ZodType<SensoryProfile> = z.object({
   prefersReducedMotion: z.boolean(),
   wantsSocialStory: z.boolean(),
   wantsAffirmations: z.boolean(),
+  wantsTextToSpeech: z.boolean(),
+  routePreference: z.enum(["balanced", "fastest", "quietest"]),
+  needsLevelBoardingInfo: z.boolean(),
+  needsLiveLiftInfo: z.boolean(),
+  supportCardName: z.string(),
+  supportCardMessage: z.string(),
+  emergencyContacts: z.array(
+    z.object({
+      name: z.string(),
+      phone: z.string(),
+      relationship: z.string().optional(),
+    })
+  ),
   createdAt: z.string().optional(),
 });
 
@@ -61,6 +74,18 @@ function mapDbToProfile(row: Record<string, unknown>): SensoryProfile {
     prefersReducedMotion: Boolean(row.prefers_reduced_motion),
     wantsSocialStory: Boolean(row.wants_social_story),
     wantsAffirmations: Boolean(row.wants_affirmations),
+    wantsTextToSpeech: Boolean(row.wants_text_to_speech),
+    routePreference: (row.route_preference as SensoryProfile["routePreference"]) ?? "balanced",
+    needsLevelBoardingInfo: Boolean(row.needs_level_boarding_info),
+    needsLiveLiftInfo: Boolean(row.needs_live_lift_info),
+    supportCardName: (row.support_card_name as string) ?? "",
+    supportCardMessage:
+      (row.support_card_message as string) ??
+      "I may need a little extra time and clear instructions.",
+    emergencyContacts:
+      ((row.emergency_contacts as SensoryProfile["emergencyContacts"]) ?? []).filter(
+        (contact) => contact && contact.name && contact.phone
+      ),
     createdAt: (row.created_at as string) ?? undefined,
   };
 }
@@ -136,6 +161,13 @@ export async function POST(req: NextRequest) {
       prefers_reduced_motion: profile.prefersReducedMotion,
       wants_social_story: profile.wantsSocialStory,
       wants_affirmations: profile.wantsAffirmations,
+      wants_text_to_speech: profile.wantsTextToSpeech,
+      route_preference: profile.routePreference,
+      needs_level_boarding_info: profile.needsLevelBoardingInfo,
+      needs_live_lift_info: profile.needsLiveLiftInfo,
+      support_card_name: profile.supportCardName,
+      support_card_message: profile.supportCardMessage,
+      emergency_contacts: profile.emergencyContacts,
       updated_at: new Date().toISOString(),
     };
 

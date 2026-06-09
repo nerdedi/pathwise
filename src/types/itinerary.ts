@@ -13,6 +13,13 @@ export interface TransportLeg {
   accessibilityNotes?: string;
   approximateSteps?: number;
   stepByStepInstructions?: string[];
+  crowdingLevel?: "low" | "medium" | "high";
+  noiseLevel?: "low" | "medium" | "high";
+  levelBoarding?: boolean;
+  onboardToilet?: boolean;
+  liftStatus?: "available" | "outage" | "unknown";
+  stationFacilities?: string[];
+  disruptionInfo?: string;
 }
 
 export interface TransportPlan {
@@ -23,6 +30,23 @@ export interface TransportPlan {
   totalApproximateSteps: number;
   accessibleRoute: boolean;
   notes: string;
+  routePreference?: "balanced" | "fastest" | "quietest";
+  stressScore?: number;
+  journeyReminder?: string;
+  stationWayfinding?: Array<{
+    stationName: string;
+    stepFreeAccess: boolean;
+    accessibleToilet: boolean;
+    toilets: boolean;
+    liftStatus: "operational" | "unknown" | "out";
+    seating: boolean;
+    helpPoint: boolean;
+    levelBoardingAvailable?: boolean;
+    onboardToiletAvailable?: boolean;
+    notes?: string;
+  }>;
+  liveUpdates?: string[];
+  reminders?: string[];
 }
 
 export interface WeatherForecast {
@@ -105,4 +129,5 @@ export interface Itinerary {
   // Meta
   generatedAt: string;
   userId?: string;
+  sharedWithEmails?: string[];
 }

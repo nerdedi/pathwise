@@ -26,6 +26,7 @@ import AffirmationCard from "./affirmation-card";
 import OverwhelmedPlan from "./overwhelmed-plan";
 import PackingList from "./packing-list";
 import RiskAssessment from "./risk-assessment";
+import SupportToolkit from "./support-toolkit";
 import TransportSection from "./transport-section";
 import VenueMap from "./venue-map";
 import WeatherCard from "./weather-card";
@@ -162,6 +163,7 @@ export default function ItineraryView({ itinerary, allowEditing = true }: Itiner
   const [communityNotes, setCommunityNotes] = useState("");
   const [communityTips, setCommunityTips] = useState("");
   const [submittingCommunity, setSubmittingCommunity] = useState(false);
+  const [shareEmail, setShareEmail] = useState("");
 
   const venue = draftItinerary.venueData;
   const weatherPackingTips = draftItinerary.weather
@@ -245,6 +247,34 @@ export default function ItineraryView({ itinerary, allowEditing = true }: Itiner
     } finally {
       setRegeneratingSectionId(null);
     }
+  };
+
+  const addSharedEmail = () => {
+    const email = shareEmail.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      setSaveMessage("Enter a valid email to share this plan.");
+      return;
+    }
+
+    if ((draftItinerary.sharedWithEmails ?? []).includes(email)) {
+      setSaveMessage("That email already has access.");
+      return;
+    }
+
+    setDraftItinerary((prev) => ({
+      ...prev,
+      sharedWithEmails: [...(prev.sharedWithEmails ?? []), email],
+    }));
+    setShareEmail("");
+    setSaveMessage("Collaborator added. Save changes to sync.");
+  };
+
+  const removeSharedEmail = (email: string) => {
+    setDraftItinerary((prev) => ({
+      ...prev,
+      sharedWithEmails: (prev.sharedWithEmails ?? []).filter((item) => item !== email),
+    }));
+    setSaveMessage("Collaborator removed. Save changes to sync.");
   };
 
   const loadCommunity = useCallback(async () => {
@@ -423,6 +453,58 @@ export default function ItineraryView({ itinerary, allowEditing = true }: Itiner
           />
         ))}
 
+        {allowEditing && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">🤝 Shared planning</CardTitle>
+              <p className="text-xs text-sage-500 mt-1">
+                Share this plan with assistants or trusted people so you can coordinate together.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              {draftItinerary.sharedWithEmails && draftItinerary.sharedWithEmails.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {draftItinerary.sharedWithEmails.map((email) => (
+                    <span
+                      key={email}
+                      className="inline-flex items-center gap-2 rounded-full bg-sage-50 border border-sage-200 px-3 py-1 text-xs text-sage-700"
+                    >
+                      {email}
+                      <button
+                        type="button"
+                        onClick={() => removeSharedEmail(email)}
+                        className="text-sage-500 hover:text-sage-700"
+                        aria-label={`Remove ${email}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-sage-500">No collaborators added yet.</p>
+              )}
+
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={shareEmail}
+                  onChange={(e) => setShareEmail(e.target.value)}
+                  placeholder="assistant@example.com"
+                  className="flex-1 h-10 rounded-xl border border-sage-200 px-3 text-sm bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+                />
+                <Button type="button" variant="outline" onClick={addSharedEmail}>
+                  Add
+                </Button>
+              </div>
+
+              <p className="text-xs text-sage-500">
+                Shared people can coordinate the plan. Personal reflections should stay outside shared sections.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle className="text-base">🫶 Community tips</CardTitle>
@@ -514,6 +596,17 @@ export default function ItineraryView({ itinerary, allowEditing = true }: Itiner
 
         {/* If overwhelmed */}
         <OverwhelmedPlan plan={draftItinerary.crisisPlan} />
+
+        {allowEditing && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">🆘 Communication and support</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <SupportToolkit profile={draftItinerary.sensoryProfile} showEmergencyContacts={allowEditing} />
+            </CardContent>
+          </Card>
+        )}
 
         {/* Affirmations — during */}
         {draftItinerary.affirmations.some((a) => a.timing === "during") && (
