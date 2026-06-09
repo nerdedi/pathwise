@@ -73,7 +73,6 @@ export async function generateJson(
   systemPrompt: string,
   userMessage: string
 ): Promise<unknown> {
-  console.log(`[AI] Using provider: ${activeProvider()}`);
   if (process.env.GROQ_API_KEY) {
     return generateJsonGroq(systemPrompt, userMessage);
   }
