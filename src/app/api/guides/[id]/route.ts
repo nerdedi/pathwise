@@ -121,10 +121,11 @@ export async function PUT(req: NextRequest, { params }: Params) {
       );
     }
 
-    const normalizedCollaborators = normalizeCollaborators(itinerary as Itinerary);
+    const itineraryData = itinerary as unknown as Itinerary;
+    const normalizedCollaborators = normalizeCollaborators(itineraryData);
     const nowIso = new Date().toISOString();
     const ownerReadyItinerary: Itinerary = {
-      ...(itinerary as Itinerary),
+      ...itineraryData,
       sharedWith: normalizedCollaborators,
       sharedWithEmails: normalizedCollaborators.map((item) => item.email),
       lastEditedAt: nowIso,
@@ -181,8 +182,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
       const protectedCollaborators = normalizeCollaborators(existingShared);
       const collaboratorSafeUpdate: Itinerary = {
-        ...(itinerary as Itinerary),
-        sections: mergeSectionsRespectingLocks(existingShared, itinerary as Itinerary),
+        ...itineraryData,
+        sections: mergeSectionsRespectingLocks(existingShared, itineraryData),
         lockedSectionIds: existingShared.lockedSectionIds,
         privateNotes: existingShared.privateNotes,
         sharedWith: protectedCollaborators,

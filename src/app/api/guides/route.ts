@@ -62,10 +62,11 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { itinerary } = SaveGuideSchema.parse(body);
-    const normalizedCollaborators = normalizeCollaborators(itinerary as Itinerary);
+    const itineraryData = itinerary as unknown as Itinerary;
+    const normalizedCollaborators = normalizeCollaborators(itineraryData);
     const nowIso = new Date().toISOString();
     const normalizedItinerary: Itinerary = {
-      ...(itinerary as Itinerary),
+      ...itineraryData,
       sharedWith: normalizedCollaborators,
       sharedWithEmails: normalizedCollaborators.map((item) => item.email),
       lastEditedAt: nowIso,
