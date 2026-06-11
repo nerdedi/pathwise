@@ -149,6 +149,10 @@ Guidelines:
 12. Where feasible, include translations in Spanish (es), Arabic (ar), and Simplified Chinese (zh) under a translations object for each social story panel
 13. In transport-related sections, prioritise these supports in concise language: first/last mile guidance, stop alerts, disruption rerouting, missed-stop recovery, crowd-aware alternatives, leave-on-time reminders, live ETA updates, and panic-contact options
 14. Keep transport instructions brief, consistent, and icon-friendly (short labels and one-sentence detail lines)
+15. Every itinerary section must include concrete actions, not generic advice
+16. For each section, include at least 4 detail bullet points with specific, practical guidance
+17. Include a clear venue risk breakdown that covers at least sound, crowds, lighting, and unpredictability
+18. Make suggestions realistic for in-the-moment use (what to do right now, in one sentence)
 
 Return valid JSON matching the Itinerary TypeScript type (sections, packingList, crisisPlan, affirmations, socialStory, riskScore, riskSummary, riskDetails).
 `.trim();

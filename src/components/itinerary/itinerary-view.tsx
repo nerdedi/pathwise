@@ -29,6 +29,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import AffirmationCard from "./affirmation-card";
 import FoodOptions from "./food-options";
+import LiveTripDashboard from "./live-trip-dashboard";
 import MoodCheckin from "./mood-checkin";
 import OverwhelmedPlan from "./overwhelmed-plan";
 import PackingList from "./packing-list";
@@ -220,6 +221,11 @@ export default function ItineraryView({
   const [votedCommunityEntryIds, setVotedCommunityEntryIds] = useState<string[]>([]);
   const [reportingCommunityEntryId, setReportingCommunityEntryId] = useState<string | null>(null);
   const [reportedCommunityEntryIds, setReportedCommunityEntryIds] = useState<string[]>([]);
+  const [refreshingLiveReports, setRefreshingLiveReports] = useState(false);
+  const [transportOrigin, setTransportOrigin] = useState(itinerary.fromSuburb ?? "");
+  const [transportDate, setTransportDate] = useState(itinerary.visitDate ?? "");
+  const [transportTime, setTransportTime] = useState("10:00");
+  const [generatingTransport, setGeneratingTransport] = useState(false);
   const [shareEmail, setShareEmail] = useState("");
   const [shareRole, setShareRole] = useState<CollaborationRole>("viewer");
   const [privateNotesDraft, setPrivateNotesDraft] = useState(itinerary.privateNotes ?? "");
@@ -243,6 +249,8 @@ export default function ItineraryView({
     setDraftItinerary(itinerary);
     setPrivateNotesDraft(itinerary.privateNotes ?? "");
     setActiveMapSectionId(itinerary.sections[0]?.id ?? null);
+    setTransportOrigin(itinerary.fromSuburb ?? "");
+    setTransportDate(itinerary.visitDate ?? "");
   }, [itinerary]);
 
   useEffect(() => {
@@ -452,6 +460,99 @@ export default function ItineraryView({
     }
   };
 
+  const refreshLiveReports = async () => {
+    setRefreshingLiveReports(true);
+    try {
+      const res = await fetch("/api/scrape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: venue.url }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to sync live reports");
+      }
+
+      const data = await res.json();
+      const nextVenue = {
+        ...draftItinerary.venueData,
+        liveUpdates:
+          (data.venueData?.liveUpdates as string[] | undefined) ??
+          draftItinerary.venueData.liveUpdates,
+        externalInsights:
+          (data.venueData?.externalInsights as Itinerary["venueData"]["externalInsights"]) ??
+          draftItinerary.venueData.externalInsights,
+        sourceMeta: {
+          ...(draftItinerary.venueData.sourceMeta ?? {}),
+          ...((data.venueData?.sourceMeta as Itinerary["venueData"]["sourceMeta"]) ?? {}),
+          liveUpdatesSyncedAt: new Date().toISOString(),
+        },
+      };
+
+      const nextItinerary = {
+        ...draftItinerary,
+        venueData: nextVenue,
+      };
+
+      setDraftItinerary(nextItinerary);
+      await persistItinerary(nextItinerary, "Live venue updates synced.");
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : "Failed to sync live reports.");
+    } finally {
+      setRefreshingLiveReports(false);
+    }
+  };
+
+  const generateTransportPlan = async () => {
+    if (!transportOrigin.trim()) {
+      setSaveMessage("Add your starting suburb to generate transport guidance.");
+      return;
+    }
+
+    setGeneratingTransport(true);
+    try {
+      const res = await fetch("/api/transport", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: transportOrigin,
+          to: `${venue.address}, ${venue.suburb}`,
+          date: transportDate || undefined,
+          time: transportTime,
+          routePreference: draftItinerary.sensoryProfile.routePreference,
+          wheelchairRequired:
+            draftItinerary.sensoryProfile.needsMobilityAccess ||
+            draftItinerary.sensoryProfile.usesMobilityAid,
+          needsLevelBoardingInfo: draftItinerary.sensoryProfile.needsLevelBoardingInfo,
+          needsLiveLiftInfo: draftItinerary.sensoryProfile.needsLiveLiftInfo,
+          needsOnboardToiletInfo: draftItinerary.sensoryProfile.hasMedicalNeeds,
+          crowdSensitivity: draftItinerary.sensoryProfile.crowdSensitivity,
+          soundSensitivity: draftItinerary.sensoryProfile.soundSensitivity,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to generate transport plan");
+      }
+
+      const nextItinerary = {
+        ...draftItinerary,
+        fromSuburb: transportOrigin,
+        visitDate: transportDate || draftItinerary.visitDate,
+        transportTo: data.plan,
+      };
+
+      setDraftItinerary(nextItinerary);
+      await persistItinerary(nextItinerary, "Transport trip plan generated.");
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : "Failed to generate transport plan.");
+    } finally {
+      setGeneratingTransport(false);
+    }
+  };
+
   useEffect(() => {
     void loadCommunity();
   }, [loadCommunity]);
@@ -563,7 +664,7 @@ export default function ItineraryView({
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
+    <div className="max-w-3xl mx-auto px-4 py-8 print-root print-safe">
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -678,6 +779,13 @@ export default function ItineraryView({
           crisisPlan={draftItinerary.crisisPlan}
         />
 
+        <LiveTripDashboard
+          venueName={venue.name}
+          quietTimes={venue.quietTimes}
+          peakTimes={venue.peakTimes}
+          enableVoice={draftItinerary.sensoryProfile.wantsTextToSpeech}
+        />
+
         {(liveUpdates.length > 0 || reviewHighlights.length > 0 || venue.externalInsights?.averageRating) && (
           <Card>
             <CardHeader>
@@ -698,6 +806,43 @@ export default function ItineraryView({
                     {estimatedFieldCount} field(s) estimated
                   </span>
                 )}
+                {!venue.sourceMeta?.hasGoogleInsights && (
+                  <span className="text-xs bg-warm-100 text-warm-700 rounded-full px-2.5 py-1">
+                    Google reviews not found yet
+                  </span>
+                )}
+              </div>
+
+              {venue.sourceMeta?.googleQueriesTried && venue.sourceMeta.googleQueriesTried.length > 0 && (
+                <p className="text-xs text-sage-500">
+                  Google queries tried: {venue.sourceMeta.googleQueriesTried.join(" • ")}
+                </p>
+              )}
+
+              {venue.sourceMeta?.liveUpdatesSyncedAt && (
+                <p className="text-xs text-sage-500">
+                  Last synced: {new Date(venue.sourceMeta.liveUpdatesSyncedAt).toLocaleString()}
+                </p>
+              )}
+
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => {
+                    void refreshLiveReports();
+                  }}
+                  disabled={refreshingLiveReports}
+                >
+                  {refreshingLiveReports ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
+                  Sync live venue reports
+                </Button>
               </div>
 
               {typeof venue.externalInsights?.averageRating === "number" && (
@@ -1027,6 +1172,49 @@ export default function ItineraryView({
             copingStrategies={draftItinerary.sensoryProfile.copingStrategies}
             groundingTechniques={draftItinerary.sensoryProfile.groundingTechniques}
           />
+        )}
+        {!draftItinerary.transportTo && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">🚌 Transport trip planning</CardTitle>
+              <p className="text-xs text-sage-500 mt-1">
+                Add your starting suburb to generate a detailed route with stop prompts.
+              </p>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-3">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <input
+                  value={transportOrigin}
+                  onChange={(e) => setTransportOrigin(e.target.value)}
+                  placeholder="Starting suburb"
+                  className="h-10 rounded-xl border border-sage-200 px-3 text-sm"
+                />
+                <input
+                  type="date"
+                  value={transportDate}
+                  onChange={(e) => setTransportDate(e.target.value)}
+                  className="h-10 rounded-xl border border-sage-200 px-3 text-sm"
+                />
+                <input
+                  type="time"
+                  value={transportTime}
+                  onChange={(e) => setTransportTime(e.target.value)}
+                  className="h-10 rounded-xl border border-sage-200 px-3 text-sm"
+                />
+              </div>
+              <Button
+                type="button"
+                onClick={() => {
+                  void generateTransportPlan();
+                }}
+                disabled={generatingTransport}
+                className="gap-2"
+              >
+                {generatingTransport ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Generate transport trip plan
+              </Button>
+            </CardContent>
+          </Card>
         )}
         {draftItinerary.transportFrom && (
           <TransportSection

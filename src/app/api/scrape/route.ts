@@ -35,6 +35,8 @@ function buildFallbackVenueData(url: string, reason: string) {
       estimatedFieldPaths: ["address", "suburb", "quietTimes"],
       updatedAt: new Date().toISOString(),
       fallbackReason: reason,
+      googleQueriesTried: [],
+      liveUpdatesSyncedAt: new Date().toISOString(),
     },
   };
 }
@@ -123,9 +125,18 @@ export async function POST(req: NextRequest) {
     const userMessage = `Extract structured venue data from the following website content.\n\nWebsite URL: ${url}\n\nContent:\n${combinedContent}`;
     const venueData = (await generateJson(VENUE_EXTRACTION_SYSTEM_PROMPT, userMessage)) as Record<string, unknown>;
 
-    const googleInsights = await fetchGooglePlaceInsights(
-      `${String(venueData.name ?? "")} ${String(venueData.address ?? "")} ${String(venueData.suburb ?? "")}`.trim()
-    );
+    const queryCandidates = [
+      `${String(venueData.name ?? "")} ${String(venueData.address ?? "")} ${String(venueData.suburb ?? "")}`.trim(),
+      `${String(venueData.name ?? "")} ${String(venueData.suburb ?? "")}`.trim(),
+      `${String(venueData.name ?? "")}`.trim(),
+      `${new URL(url).hostname.replace(/^www\./, "")} ${String(venueData.suburb ?? "")}`.trim(),
+    ].filter(Boolean);
+
+    let googleInsights = null;
+    for (const candidate of Array.from(new Set(queryCandidates))) {
+      googleInsights = await fetchGooglePlaceInsights(candidate);
+      if (googleInsights) break;
+    }
 
     const liveUpdates = extractSiteUpdates(combinedContent);
     const estimatedFieldPaths = Array.from(
@@ -147,6 +158,8 @@ export async function POST(req: NextRequest) {
         hasGoogleInsights: Boolean(googleInsights),
         estimatedFieldPaths,
         updatedAt: new Date().toISOString(),
+        googleQueriesTried: Array.from(new Set(queryCandidates)).slice(0, 5),
+        liveUpdatesSyncedAt: new Date().toISOString(),
       },
     };
 

@@ -173,4 +173,68 @@ describe("itinerary route", () => {
     expect(response.status).toBe(500);
     expect(vi.mocked(logError)).toHaveBeenCalledWith("/api/itinerary", expect.any(Error));
   });
+
+  it("builds deterministic transport and risk fallbacks when AI omits detail", async () => {
+    vi.mocked(generateJson).mockResolvedValue({
+      sections: [
+        {
+          id: "before-you-go",
+          title: "Before you go",
+          emoji: "📝",
+          content: "Prepare",
+          details: ["Pack"],
+          isExpandable: true,
+        },
+      ],
+      packingList: [],
+      crisisPlan: {
+        steps: ["Pause"],
+        quietRooms: [],
+        exits: [],
+        helpDeskLocation: "Reception",
+        venuePhone: "",
+        selfCareReminders: ["Breathe"],
+      },
+      affirmations: [{ text: "You got this", timing: "during" }],
+      socialStory: [],
+      riskScore: 1,
+      riskSummary: "",
+      riskDetails: {},
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/itinerary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          venueData: {
+            ...baseVenue,
+            soundDescription: "Often loud near exhibits",
+            lightingDescription: "Bright in some rooms",
+            peakTimes: "Weekends 11am-2pm",
+          },
+          sensoryProfile: baseProfile,
+          fromSuburb: "Parramatta",
+          visitDate: "2026-06-15",
+          visitTime: "09:30",
+        }),
+      }) as never
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      itinerary: {
+        sections: Array<{ id: string; details?: string[] }>;
+        transportTo: { liveDataFreshness: string } | null;
+        riskDetails: Record<string, { score: number; detail: string }>;
+      };
+    };
+
+    expect(payload.itinerary.transportTo?.liveDataFreshness).toBe("fallback");
+    expect(payload.itinerary.sections.find((section) => section.id === "getting-there")).toBeTruthy();
+    expect((payload.itinerary.sections.find((section) => section.id === "before-you-go")?.details ?? []).length).toBeGreaterThanOrEqual(4);
+    expect(Object.keys(payload.itinerary.riskDetails)).toEqual(
+      expect.arrayContaining(["sound", "crowds", "lighting", "unpredictability"])
+    );
+  });
 });

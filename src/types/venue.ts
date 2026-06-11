@@ -148,6 +148,8 @@ export interface VenueData {
     estimatedFieldPaths?: string[];
     updatedAt?: string;
     fallbackReason?: string;
+    googleQueriesTried?: string[];
+    liveUpdatesSyncedAt?: string;
   };
 
   scrapedAt: string;

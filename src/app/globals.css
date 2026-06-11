@@ -133,14 +133,55 @@
 
 /* Print styles for social stories */
 @media print {
+  @page {
+    margin: 10mm;
+  }
+
+  html,
+  body {
+    width: 100%;
+    height: auto;
+    background: #fff !important;
+  }
+
   .no-print {
     display: none !important;
   }
+
   .print-page-break {
     page-break-before: always;
   }
+
+  .print-root {
+    max-width: none !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .print-safe,
+  .print-safe * {
+    overflow: visible !important;
+  }
+
+  .print-root .rounded-2xl {
+    border-width: 1px !important;
+    border-color: #d9dfde !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-root .p-5 {
+    padding: 10px !important;
+  }
+
+  .print-root .pb-0 {
+    padding-bottom: 0 !important;
+  }
+
   body {
-    font-size: 14pt;
-    line-height: 1.6;
+    font-size: 11pt;
+    line-height: 1.45;
   }
 }
