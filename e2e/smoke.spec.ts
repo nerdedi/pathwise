@@ -30,7 +30,9 @@ test.describe("public smoke routes", () => {
       page.getByRole("heading", { name: /Where are you heading\?/i })
     ).toBeVisible();
     await expect(page.getByLabel(/Venue website URL/i)).toBeVisible();
-    await expect(page.getByRole("link", { name: /System check/i })).toBeVisible();
+    await expect(
+      page.getByRole("navigation").getByRole("link", { name: /System check/i })
+    ).toBeVisible();
   });
 
   test("system-check nav link opens setup diagnostics", async ({ page }) => {

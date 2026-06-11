@@ -208,11 +208,14 @@ describe("community route", () => {
       eq: vi.fn().mockResolvedValue({ error: null }),
     };
 
+    const voteInsert = vi.fn().mockResolvedValue({ error: null });
+
     vi.mocked(createClient).mockResolvedValue({
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-2" } } }) },
       from: vi.fn(() => ({
         ...loadQuery,
         ...updateQuery,
+        insert: voteInsert,
       })),
     } as never);
 
@@ -227,6 +230,47 @@ describe("community route", () => {
     expect(response.status).toBe(200);
     const payload = (await response.json()) as { helpfulCount: number };
     expect(payload.helpfulCount).toBe(3);
+    expect(voteInsert).toHaveBeenCalledWith({
+      entry_id: "11111111-1111-4111-8111-111111111111",
+      user_id: "user-2",
+    });
+  });
+
+  it("returns 409 when user has already voted for the same note", async () => {
+    const loadQuery = {
+      select: vi.fn(() => loadQuery),
+      eq: vi.fn(() => loadQuery),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: "row-1", user_id: "owner-1", helpful_count: 2 },
+        error: null,
+      }),
+    };
+
+    const update = vi.fn(() => ({ eq: vi.fn() }));
+
+    const voteInsert = vi.fn().mockResolvedValue({
+      error: { code: "23505", message: "duplicate key value" },
+    });
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-2" } } }) },
+      from: vi.fn(() => ({
+        ...loadQuery,
+        insert: voteInsert,
+        update,
+      })),
+    } as never);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/community", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entryId: "11111111-1111-4111-8111-111111111111" }),
+      }) as never
+    );
+
+    expect(response.status).toBe(409);
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("blocks users from voting on their own note", async () => {

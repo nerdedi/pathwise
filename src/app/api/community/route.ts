@@ -130,6 +130,22 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
+    const { error: voteError } = await supabase.from("venue_community_votes").insert({
+      entry_id: payload.entryId,
+      user_id: user.id,
+    });
+
+    if (voteError) {
+      if ((voteError as { code?: string }).code === "23505") {
+        return NextResponse.json(
+          { error: "You have already marked this note as helpful." },
+          { status: 409 }
+        );
+      }
+
+      throw voteError;
+    }
+
     const nextHelpfulCount = Number(existing.helpful_count ?? 0) + 1;
 
     const { error: updateError } = await supabase
