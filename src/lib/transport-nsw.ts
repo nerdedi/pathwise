@@ -66,6 +66,8 @@ export interface TripPlanResult {
     onboardToiletAvailable?: boolean;
     notes?: string;
   }>;
+  liveDataFreshness?: "live" | "stale" | "fallback";
+  liveDataCheckedAt?: string;
   liveUpdates?: string[];
   reminders?: string[];
   notes: string;
@@ -241,7 +243,6 @@ export async function getTripPlan(
         onboardToilet: mode === "train" ? durationMinutes >= 25 : mode === "ferry",
         liftStatus: accessible ? "available" : "unknown",
         stationFacilities: inferStationFacilities(leg.origin?.name ?? leg.destination?.name ?? "Station", accessible),
-        disruptionInfo: "No live disruption reported right now. Recheck closer to departure.",
       };
     }
   );
@@ -272,10 +273,19 @@ export async function getTripPlan(
   const best = candidates.sort((a, b) => a.rankingScore - b.rankingScore)[0];
   const totalApproximateSteps = best.legs.reduce((sum, leg) => sum + (leg.approximateSteps ?? 0), 0);
   const stationWayfinding = buildStationWayfinding(best.legs, req);
+  const liveDataCheckedAt = new Date().toISOString();
+  const hasLiveSignal = best.legs.some((leg) => Boolean(leg.disruptionInfo));
+  const liveDataFreshness: TripPlanResult["liveDataFreshness"] = hasLiveSignal
+    ? "live"
+    : "stale";
+
   const liveUpdates = [
-    req.needsLiveLiftInfo
-      ? "Lift status should be checked again shortly before travel."
-      : "No live disruption feed connected yet.",
+    hasLiveSignal
+      ? "Live service alerts were detected for this route."
+      : "Using scheduled timetable data. Recheck shortly before departure for live changes.",
+    ...(req.needsLiveLiftInfo
+      ? ["Lift status should be checked again shortly before travel."]
+      : []),
   ];
   const reminders = [
     routePreference === "quietest"
@@ -297,6 +307,8 @@ export async function getTripPlan(
     stressScore: best.stressScore,
     journeyReminder: best.journeyReminder,
     stationWayfinding,
+    liveDataFreshness,
+    liveDataCheckedAt,
     liveUpdates,
     reminders,
     notes: best.journeyReminder ?? "Planned route generated from available transport data.",
@@ -315,15 +327,80 @@ export function estimateSteps(distanceMetres: number): number {
 /**
  * Estimate walking distance from a transport stop to venue entrance (rough estimate).
  */
-export function estimateWalkFromStation(
+export async function estimateWalkFromStation(
   stationName: string,
   venueName: string
-): { distanceMetres: number; steps: number; minutes: number } {
-  // Placeholder — in production, use Google Maps Distance Matrix or Mapbox Directions
-  const estimated = 350; // assume 350m average
-  return {
-    distanceMetres: estimated,
-    steps: estimateSteps(estimated),
-    minutes: Math.round(estimated / 80), // ~80m/min walking pace
-  };
+): Promise<{ distanceMetres: number; steps: number; minutes: number }> {
+  const fallbackEstimate = 350; // assume 350m average
+
+  const mapboxToken = process.env.MAPBOX_ACCESS_TOKEN?.trim();
+  if (!mapboxToken) {
+    return {
+      distanceMetres: fallbackEstimate,
+      steps: estimateSteps(fallbackEstimate),
+      minutes: Math.round(fallbackEstimate / 80),
+    };
+  }
+
+  async function geocode(query: string) {
+    const encoded = encodeURIComponent(query);
+    const response = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?limit=1&access_token=${mapboxToken}`
+    );
+
+    if (!response.ok) return null;
+    const payload = (await response.json()) as {
+      features?: Array<{ center?: [number, number] }>;
+    };
+
+    const center = payload.features?.[0]?.center;
+    return center && center.length === 2 ? center : null;
+  }
+
+  try {
+    const [from, to] = await Promise.all([
+      geocode(`${stationName}, Sydney NSW`),
+      geocode(`${venueName}, Sydney NSW`),
+    ]);
+
+    if (!from || !to) {
+      return {
+        distanceMetres: fallbackEstimate,
+        steps: estimateSteps(fallbackEstimate),
+        minutes: Math.round(fallbackEstimate / 80),
+      };
+    }
+
+    const directionsResponse = await fetch(
+      `https://api.mapbox.com/directions/v5/mapbox/walking/${from[0]},${from[1]};${to[0]},${to[1]}?overview=false&steps=false&access_token=${mapboxToken}`
+    );
+
+    if (!directionsResponse.ok) {
+      return {
+        distanceMetres: fallbackEstimate,
+        steps: estimateSteps(fallbackEstimate),
+        minutes: Math.round(fallbackEstimate / 80),
+      };
+    }
+
+    const directions = (await directionsResponse.json()) as {
+      routes?: Array<{ distance?: number; duration?: number }>;
+    };
+
+    const route = directions.routes?.[0];
+    const distanceMetres = Math.max(100, Math.round(route?.distance ?? fallbackEstimate));
+    const minutes = Math.max(2, Math.round((route?.duration ?? distanceMetres / 80) / 60));
+
+    return {
+      distanceMetres,
+      steps: estimateSteps(distanceMetres),
+      minutes,
+    };
+  } catch {
+    return {
+      distanceMetres: fallbackEstimate,
+      steps: estimateSteps(fallbackEstimate),
+      minutes: Math.round(fallbackEstimate / 80),
+    };
+  }
 }

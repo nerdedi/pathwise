@@ -99,6 +99,12 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-4">
             <Link
+              href="/setup"
+              className="text-sm text-sage-700 hover:text-sage-900"
+            >
+              System check
+            </Link>
+            <Link
               href="/onboarding"
               className="text-sm text-sage-700 hover:text-sage-900"
             >

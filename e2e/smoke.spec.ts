@@ -30,4 +30,11 @@ test.describe("public smoke routes", () => {
     ).toBeVisible();
     await expect(page.getByLabel(/Venue website URL/i)).toBeVisible();
   });
+
+  test("setup page renders runtime diagnostics", async ({ page }) => {
+    await page.goto("/setup");
+
+    await expect(page.getByRole("heading", { name: /Environment diagnostics/i })).toBeVisible();
+    await expect(page.getByText(/runtime checks/i)).toBeVisible();
+  });
 });

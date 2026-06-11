@@ -6,7 +6,7 @@ import { defaultSensoryProfile } from "@/types/sensory-profile";
 import { ArrowRight, Calendar, Loader2, MapPin, Navigation } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function PlanPage() {
   const router = useRouter();
@@ -18,6 +18,24 @@ export default function PlanPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [step, setStep] = useState<"idle" | "scraping" | "generating">("idle");
+  const [runtimeWarnings, setRuntimeWarnings] = useState<string[]>([]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/health", { cache: "no-store" });
+        const data = (await res.json()) as {
+          issues?: Array<{ severity: "warning" | "error"; message: string }>;
+        };
+        const warnings = (data.issues ?? [])
+          .filter((issue) => issue.severity === "warning" || issue.severity === "error")
+          .map((issue) => issue.message);
+        setRuntimeWarnings(warnings.slice(0, 2));
+      } catch {
+        setRuntimeWarnings([]);
+      }
+    })();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,6 +156,9 @@ export default function PlanPage() {
           <Link href="/guides" className="text-sm text-sage-600 hover:text-sage-800">
             My guides
           </Link>
+          <Link href="/setup" className="text-sm text-sage-600 hover:text-sage-800">
+            System check
+          </Link>
         </div>
       </nav>
 
@@ -150,6 +171,20 @@ export default function PlanPage() {
             Paste the venue website link below and we&rsquo;ll build your personalised guide.
           </p>
         </div>
+
+        {runtimeWarnings.length > 0 && (
+          <div className="mb-4 rounded-xl border border-warm-200 bg-warm-50 px-4 py-3 text-sm text-warm-800">
+            <p className="font-semibold mb-1">Some setup items need attention</p>
+            <ul className="list-disc list-inside space-y-0.5">
+              {runtimeWarnings.map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
+            <Link href="/setup" className="inline-block mt-2 underline text-warm-900">
+              Open system check
+            </Link>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-sage-100 shadow-sm p-6 space-y-5">
           <Input

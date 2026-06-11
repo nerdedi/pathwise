@@ -52,6 +52,8 @@ export interface TransportPlan {
     onboardToiletAvailable?: boolean;
     notes?: string;
   }>;
+  liveDataFreshness?: "live" | "stale" | "fallback";
+  liveDataCheckedAt?: string;
   liveUpdates?: string[];
   reminders?: string[];
 }

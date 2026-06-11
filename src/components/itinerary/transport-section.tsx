@@ -9,8 +9,8 @@ import {
     buildTripOptimisationTips,
     type TransportTripMemory,
 } from "@/lib/transport-support";
-  import { speakCalmText } from "@/lib/voice";
 import { formatTime, minutesToDuration } from "@/lib/utils";
+import { speakCalmText } from "@/lib/voice";
 import type { TransportPlan } from "@/types/itinerary";
 import type { EmergencyContact } from "@/types/sensory-profile";
 import {
@@ -708,10 +708,22 @@ export default function TransportSection({
 
         {plan.liveUpdates && plan.liveUpdates.length > 0 && (
           <div className="mt-4 rounded-xl border border-warm-100 bg-warm-50 px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-warm-700 mb-1">Live updates</p>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-warm-700">Live updates</p>
+              {plan.liveDataFreshness && (
+                <span className="text-[10px] rounded-full border border-warm-200 bg-white px-2 py-0.5 uppercase tracking-wide text-warm-700">
+                  {plan.liveDataFreshness}
+                </span>
+              )}
+            </div>
             {plan.liveUpdates.map((update) => (
               <p key={update} className="text-xs text-warm-700">• {update}</p>
             ))}
+            {plan.liveDataCheckedAt && (
+              <p className="mt-1 text-[10px] text-warm-700/80">
+                Checked: {formatTime(plan.liveDataCheckedAt)}
+              </p>
+            )}
           </div>
         )}
 
