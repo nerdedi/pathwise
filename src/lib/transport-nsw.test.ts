@@ -209,6 +209,32 @@ describe("transport-nsw helpers", () => {
     expect(plan?.reminders?.[1]).toContain("toilet access");
   });
 
+  it("normalizes an unknown transport mode to its raw value", async () => {
+    process.env.TRANSPORT_NSW_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        journeys: [{
+          legs: [{
+            transportation: { product: { name: "monorail" }, number: "M1" },
+            origin: { name: "Central", departureTimePlanned: "2026-06-11T10:00:00+10:00" },
+            destination: { name: "Darling Harbour", arrivalTimePlanned: "2026-06-11T10:10:00+10:00" },
+          }],
+        }],
+      }),
+    }) as typeof fetch;
+
+    const plan = await getTripPlan({
+      originName: "Central",
+      destinationAddress: "Darling Harbour",
+      date: "20260611",
+      time: "1000",
+    });
+
+    expect(plan).not.toBeNull();
+    expect(plan!.legs[0]?.mode).toBe("monorail");
+  });
+
   it("builds plan with bus and ferry legs covering additional transport modes", async () => {
     process.env.TRANSPORT_NSW_API_KEY = "test-key";
     global.fetch = vi.fn().mockResolvedValue({

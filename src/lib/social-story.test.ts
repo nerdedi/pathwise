@@ -131,6 +131,48 @@ describe("social story helpers", () => {
     expect(updated[1].keywords).toEqual(["help", "staff"]);
   });
 
+  it("strips a translation that has no usable content", () => {
+    const normalized = normalizeSocialStoryPanels([
+      {
+        sequence: 1,
+        title: "Intro",
+        text: "Go inside",
+        translations: {
+          es: {
+            title: "  ",
+            text: "  ",
+            speakText: "  ",
+            sensoryCue: "",
+            supportTip: "",
+            keywords: [],
+          },
+        },
+      },
+    ]);
+
+    expect(normalized[0].translations).toBeUndefined();
+  });
+
+  it("fills in default title when translation has sensoryCue but no title", () => {
+    const normalized = normalizeSocialStoryPanels([
+      {
+        sequence: 1,
+        title: "Step",
+        text: "Do this",
+        translations: {
+          es: {
+            title: "  ",
+            text: "  ",
+            sensoryCue: "Puede ser ruidoso",
+          },
+        },
+      },
+    ]);
+
+    expect(normalized[0].translations?.es?.title).toBe("Untitled step");
+    expect(normalized[0].translations?.es?.sensoryCue).toBe("Puede ser ruidoso");
+  });
+
   it("builds fallback social story panels from sections and reminders", () => {
     const panels = buildFallbackSocialStoryPanels({
       venueName: "Calm Museum",

@@ -418,17 +418,18 @@ describe("guide detail route", () => {
       select: vi.fn().mockResolvedValue({ data: [], error: null }),
     };
 
-    const adminSelectQuery = {
-      select: vi.fn(() => adminSelectQuery),
-      eq: vi.fn(() => adminSelectQuery),
+    // Separate from() calls: first returns select chain (for maybeSingle), second returns update chain
+    let adminFromCallCount = 0;
+    const adminSelectChain = {
+      select: vi.fn(function(this: typeof adminSelectChain) { return this; }),
+      eq: vi.fn(function(this: typeof adminSelectChain) { return this; }),
       maybeSingle: vi.fn().mockResolvedValue({
         data: { itinerary_json: sharedItinerary },
         error: null,
       }),
     };
-
-    const adminUpdateQuery = {
-      update: vi.fn(() => adminUpdateQuery),
+    const adminUpdateChain = {
+      update: vi.fn(function(this: typeof adminUpdateChain) { return this; }),
       eq: vi.fn().mockResolvedValue({ error: new Error("admin update failed") }),
     };
 
@@ -437,7 +438,10 @@ describe("guide detail route", () => {
       from: vi.fn(() => ownerUpdate),
     } as never);
     vi.mocked(createAdminClient).mockReturnValue({
-      from: vi.fn(() => ({ ...adminSelectQuery, ...adminUpdateQuery })),
+      from: vi.fn(() => {
+        adminFromCallCount += 1;
+        return adminFromCallCount === 1 ? adminSelectChain : adminUpdateChain;
+      }),
     } as never);
 
     const response = await PUT(

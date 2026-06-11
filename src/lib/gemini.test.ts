@@ -36,6 +36,11 @@ describe("generateJson", () => {
     delete process.env.GOOGLE_AI_API_KEY;
   });
 
+  it("throws when neither API key is configured", async () => {
+    const { generateJson } = await import("./gemini");
+    await expect(generateJson("system", "user")).rejects.toThrow();
+  });
+
   it("uses Groq when configured", async () => {
     process.env.GROQ_API_KEY = "groq-key";
     mockCreate.mockResolvedValue({
