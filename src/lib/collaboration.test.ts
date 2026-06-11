@@ -187,4 +187,49 @@ describe("collaboration helpers", () => {
   it("returns no collaborator role for blank emails", () => {
     expect(getCollaboratorRole({ sharedWith: [], sharedWithEmails: [] }, "   ")).toBeUndefined();
   });
+
+  it("returns empty collaborators for null itinerary", () => {
+    expect(normalizeCollaborators(null)).toEqual([]);
+    expect(normalizeCollaborators(undefined)).toEqual([]);
+  });
+
+  it("filters out sharedWith entries with missing or invalid emails", () => {
+    const result = normalizeCollaborators({
+      sharedWith: [
+        { email: "", role: "viewer" },
+        { email: null as unknown as string, role: "editor" },
+        { email: "   ", role: "viewer" },
+        { email: "valid@example.com", role: "editor" },
+      ],
+      sharedWithEmails: [],
+    });
+    expect(result).toEqual([{ email: "valid@example.com", role: "editor" }]);
+  });
+
+  it("returns empty array for non-array lockedSectionIds", () => {
+    expect(normalizeLockedSectionIds(null)).toEqual([]);
+    expect(normalizeLockedSectionIds("arrival")).toEqual([]);
+    expect(normalizeLockedSectionIds(42)).toEqual([]);
+    expect(normalizeLockedSectionIds(undefined)).toEqual([]);
+  });
+
+  it("falls back to existing section when next has no matching replacement", () => {
+    const existing = makeItinerary({ lockedSectionIds: [] });
+    const next = makeItinerary({
+      sections: [
+        {
+          id: "arrival",
+          title: "Arrival",
+          emoji: "🚪",
+          content: "Updated arrival",
+          details: [],
+        },
+        // "inside" section is deliberately omitted
+      ],
+    });
+
+    const merged = mergeSectionsRespectingLocks(existing, next);
+    // "inside" should fall back to the existing section
+    expect(merged.find((s) => s.id === "inside")?.content).toBe("Original inside");
+  });
 });

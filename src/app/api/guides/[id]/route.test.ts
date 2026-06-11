@@ -341,6 +341,146 @@ describe("guide detail route", () => {
     expect(adminQuery.maybeSingle).toHaveBeenCalled();
   });
 
+  it("returns 500 when admin shared-guide fetch throws during GET", async () => {
+    const ownerQuery = {
+      select: vi.fn(() => ownerQuery),
+      eq: vi.fn(() => ownerQuery),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    };
+    const adminQuery = {
+      select: vi.fn(() => adminQuery),
+      eq: vi.fn(() => adminQuery),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: new Error("admin db failure") }),
+    };
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "viewer@example.com" } } }) },
+      from: vi.fn(() => ownerQuery),
+    } as never);
+    vi.mocked(createAdminClient).mockReturnValue({ from: vi.fn(() => adminQuery) } as never);
+
+    const response = await GET(new Request("http://localhost") as never, {
+      params: Promise.resolve({ id: "guide-123" }),
+    });
+    expect(response.status).toBe(500);
+  });
+
+  it("returns 401 when PUT is called without authentication", async () => {
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null } }) },
+      from: vi.fn(),
+    } as never);
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary: makeItinerary() }),
+      }) as never,
+      { params: Promise.resolve({ id: makeItinerary().id }) }
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 404 when PUT owner update finds no rows and admin client is unavailable", async () => {
+    const ownerUpdate = {
+      update: vi.fn(() => ownerUpdate),
+      eq: vi.fn(() => ownerUpdate),
+      select: vi.fn().mockResolvedValue({ data: [], error: null }),
+    };
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: null } } }) },
+      from: vi.fn(() => ownerUpdate),
+    } as never);
+    vi.mocked(createAdminClient).mockReturnValue(null as never);
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary: makeItinerary() }),
+      }) as never,
+      { params: Promise.resolve({ id: makeItinerary().id }) }
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 500 when collaborator admin update throws", async () => {
+    const sharedItinerary = makeItinerary({
+      sharedWith: [{ email: "editor@example.com", role: "editor" }],
+      sharedWithEmails: ["editor@example.com"],
+    });
+
+    const ownerUpdate = {
+      update: vi.fn(() => ownerUpdate),
+      eq: vi.fn(() => ownerUpdate),
+      select: vi.fn().mockResolvedValue({ data: [], error: null }),
+    };
+
+    const adminSelectQuery = {
+      select: vi.fn(() => adminSelectQuery),
+      eq: vi.fn(() => adminSelectQuery),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { itinerary_json: sharedItinerary },
+        error: null,
+      }),
+    };
+
+    const adminUpdateQuery = {
+      update: vi.fn(() => adminUpdateQuery),
+      eq: vi.fn().mockResolvedValue({ error: new Error("admin update failed") }),
+    };
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "editor@example.com" } } }) },
+      from: vi.fn(() => ownerUpdate),
+    } as never);
+    vi.mocked(createAdminClient).mockReturnValue({
+      from: vi.fn(() => ({ ...adminSelectQuery, ...adminUpdateQuery })),
+    } as never);
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary: sharedItinerary }),
+      }) as never,
+      { params: Promise.resolve({ id: sharedItinerary.id }) }
+    );
+    expect(response.status).toBe(500);
+  });
+
+  it("returns 404 when PUT collaborator path finds no matching guide", async () => {
+    const sharedItinerary = makeItinerary();
+    const ownerUpdate = {
+      update: vi.fn(() => ownerUpdate),
+      eq: vi.fn(() => ownerUpdate),
+      select: vi.fn().mockResolvedValue({ data: [], error: null }),
+    };
+    const adminQuery = {
+      select: vi.fn(() => adminQuery),
+      eq: vi.fn(() => adminQuery),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    };
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "nobody@example.com" } } }) },
+      from: vi.fn(() => ownerUpdate),
+    } as never);
+    vi.mocked(createAdminClient).mockReturnValue({ from: vi.fn(() => adminQuery) } as never);
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary: sharedItinerary }),
+      }) as never,
+      { params: Promise.resolve({ id: sharedItinerary.id }) }
+    );
+    expect(response.status).toBe(404);
+  });
+
   it("returns 401 when deleting without authentication", async () => {
     vi.mocked(createClient).mockResolvedValue({
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null } }) },
