@@ -10,6 +10,48 @@ const RequestSchema = z.object({
   url: z.string().url("Please provide a valid URL"),
 });
 
+function buildFallbackVenueData(url: string, reason: string) {
+  let host = "Venue";
+  try {
+    host = new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    // no-op
+  }
+
+  return {
+    name: host,
+    url,
+    address: "Address unavailable (estimated)",
+    suburb: "Sydney (estimated)",
+    quietTimes: "Weekday mornings (estimated)",
+    liveUpdates: ["Live venue updates unavailable in local mode."],
+    externalInsights: {
+      source: "google-places",
+      reviewHighlights: [],
+    },
+    sourceMeta: {
+      sitePagesScanned: 0,
+      hasGoogleInsights: false,
+      estimatedFieldPaths: ["address", "suburb", "quietTimes"],
+      updatedAt: new Date().toISOString(),
+      fallbackReason: reason,
+    },
+  };
+}
+
+function isRecoverableScrapeError(error: unknown) {
+  const message = String((error as { message?: string } | undefined)?.message ?? "").toLowerCase();
+  return (
+    message.includes("firecrawl_api_key") ||
+    message.includes("no ai api key found") ||
+    message.includes("google_ai_api_key") ||
+    message.includes("groq_api_key") ||
+    message.includes("request too large") ||
+    message.includes("tokens per minute") ||
+    message.includes("rate limit")
+  );
+}
+
 function collectEstimatedFieldPaths(value: unknown, basePath = ""): string[] {
   if (typeof value === "string") {
     return value.toLowerCase().includes("(estimated)") && basePath ? [basePath] : [];
@@ -116,6 +158,15 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    if (isRecoverableScrapeError(err)) {
+      const body = await req.json().catch(() => ({} as { url?: string }));
+      const fallbackUrl = typeof body.url === "string" ? body.url : "https://example.com";
+      return NextResponse.json({
+        venueData: buildFallbackVenueData(fallbackUrl, "Missing local API keys for scrape/AI providers."),
+      });
+    }
+
     logError("/api/scrape", err);
     return NextResponse.json(
       { error: "Failed to scrape venue. Please check the URL and try again." },

@@ -1,6 +1,8 @@
 "use client";
 
 import ItineraryView from "@/components/itinerary/itinerary-view";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { isSupabaseAuthConfigured } from "@/lib/supabase/config";
 import type { Itinerary } from "@/types/itinerary";
 import { ArrowLeft, Loader2, MapPin } from "lucide-react";
 import Link from "next/link";
@@ -9,6 +11,7 @@ import { useEffect, useState } from "react";
 
 export default function ItineraryPage() {
   const params = useParams<{ id: string }>();
+  const supabase = createSupabaseClient();
   const [itinerary, setItinerary] = useState<Itinerary | null>(null);
   const [error, setError] = useState("");
   const [requiresSignIn, setRequiresSignIn] = useState(false);
@@ -23,6 +26,27 @@ export default function ItineraryPage() {
         const stored = sessionStorage.getItem(`pathwise_itinerary_${params.id}`);
         if (stored) {
           setItinerary(JSON.parse(stored) as Itinerary);
+        }
+
+        const authConfigured = isSupabaseAuthConfigured();
+        if (authConfigured) {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+
+          if (!user && stored) {
+            setRequiresSignIn(true);
+            return;
+          }
+
+          if (!user) {
+            setRequiresSignIn(true);
+            setError("This saved guide requires sign-in. Open My Guides to log in.");
+            return;
+          }
+        } else if (stored) {
+          // Local-only mode: don't call protected cloud endpoints when a local copy exists.
+          return;
         }
 
         const res = await fetch(`/api/guides/${params.id}`, { cache: "no-store" });
@@ -51,7 +75,7 @@ export default function ItineraryPage() {
     };
 
     load();
-  }, [params.id]);
+  }, [params.id, supabase]);
 
   if (error && !(requiresSignIn && itinerary)) {
     return (

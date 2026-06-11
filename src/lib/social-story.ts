@@ -89,6 +89,24 @@ function cleanKeywords(keywords: string[] | undefined) {
     .slice(0, 6);
 }
 
+function buildOpenSourceImageUrl(panel: SocialStoryPanel, index: number) {
+  const seedSource = [
+    panel.title,
+    panel.text,
+    panel.imagePrompt,
+    ...(panel.keywords ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+    .toLowerCase();
+
+  const fallbackSeed = `pathwise-step-${index + 1}`;
+  const seed = encodeURIComponent(seedSource || fallbackSeed);
+
+  return `https://picsum.photos/seed/${seed}/960/540`;
+}
+
 function cleanTranslation(
   translation: SocialStoryTranslationContent | undefined
 ): SocialStoryTranslationContent | undefined {
@@ -142,7 +160,7 @@ export function normalizeSocialStoryPanels(panels: SocialStoryPanel[]) {
     title: cleanText(panel.title) ?? `Step ${index + 1}`,
     text: cleanText(panel.text) ?? "",
     imagePrompt: cleanText(panel.imagePrompt),
-    imageUrl: cleanText(panel.imageUrl),
+    imageUrl: cleanText(panel.imageUrl) ?? buildOpenSourceImageUrl(panel, index),
     sensoryCue: cleanText(panel.sensoryCue),
     supportTip: cleanText(panel.supportTip),
     speakText: cleanText(panel.speakText),

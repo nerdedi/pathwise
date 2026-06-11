@@ -147,6 +147,7 @@ export interface VenueData {
     hasGoogleInsights?: boolean;
     estimatedFieldPaths?: string[];
     updatedAt?: string;
+    fallbackReason?: string;
   };
 
   scrapedAt: string;

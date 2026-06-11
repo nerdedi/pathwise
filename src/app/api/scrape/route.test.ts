@@ -150,4 +150,35 @@ describe("scrape route", () => {
     expect(response.status).toBe(500);
     expect(vi.mocked(logError)).toHaveBeenCalledWith("/api/scrape", expect.any(Error));
   });
+
+  it("returns fallback venue data when local provider keys are missing", async () => {
+    vi.mocked(crawlVenueSite).mockRejectedValue(new Error("Missing FIRECRAWL_API_KEY"));
+    vi.mocked(scrapeVenueUrl).mockRejectedValue(new Error("Missing FIRECRAWL_API_KEY"));
+
+    const response = await POST(
+      new Request("http://localhost/api/scrape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: "https://example.com" }),
+      }) as never
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      venueData: {
+        name: string;
+        liveUpdates: string[];
+        sourceMeta: {
+          fallbackReason: string;
+          hasGoogleInsights: boolean;
+        };
+      };
+    };
+
+    expect(payload.venueData.name).toBe("example.com");
+    expect(payload.venueData.liveUpdates[0]).toContain("local mode");
+    expect(payload.venueData.sourceMeta.fallbackReason).toContain("Missing local API keys");
+    expect(payload.venueData.sourceMeta.hasGoogleInsights).toBe(false);
+    expect(vi.mocked(logError)).not.toHaveBeenCalled();
+  });
 });

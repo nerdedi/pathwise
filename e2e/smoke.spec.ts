@@ -38,8 +38,14 @@ test.describe("public smoke routes", () => {
   test("system-check nav link opens setup diagnostics", async ({ page }) => {
     await page.goto("/");
 
-    await page.getByRole("navigation").getByRole("link", { name: /System check/i }).click();
-    await expect(page).toHaveURL(/\/setup$/);
+    const systemCheckLink = page.getByRole("navigation").getByRole("link", {
+      name: /System check/i,
+    });
+    await expect(systemCheckLink).toBeVisible();
+    await Promise.all([
+      page.waitForURL(/\/setup$/),
+      systemCheckLink.click(),
+    ]);
     await expect(page.getByRole("heading", { name: /Environment diagnostics/i })).toBeVisible();
   });
   test("setup page renders runtime diagnostics", async ({ page }) => {

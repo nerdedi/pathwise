@@ -18,6 +18,13 @@ export const metadata: Metadata = {
       "Personalised venue guides for neurodiverse and anxious visitors.",
     type: "website",
   },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/icons/icon-512.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [{ url: "/icons/icon-192.png", sizes: "192x192" }],
+  },
 };
 
 export const viewport: Viewport = {
@@ -32,8 +39,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
+        <link rel="icon" href="/icons/icon-192.png" type="image/png" />
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
       <body className={`${inter.variable} font-sans antialiased min-h-screen`}>

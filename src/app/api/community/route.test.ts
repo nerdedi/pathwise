@@ -53,7 +53,7 @@ describe("community route", () => {
     expect(query.order).toHaveBeenCalledTimes(2);
   });
 
-  it("returns 500 when GET query fails", async () => {
+  it("returns an empty fallback when GET query fails", async () => {
     const query = {
       select: vi.fn(() => query),
       eq: vi.fn(() => query),
@@ -70,7 +70,10 @@ describe("community route", () => {
       new Request("http://localhost/api/community?venueUrl=https%3A%2F%2Fexample.com") as never
     );
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { entries: unknown[]; unavailable: boolean };
+    expect(payload.entries).toEqual([]);
+    expect(payload.unavailable).toBe(true);
   });
 
   it("rejects POST when unauthenticated", async () => {
