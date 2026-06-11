@@ -96,27 +96,16 @@ export default function VenueMap({
   );
 
   useEffect(() => {
-    if (!selectedFacilityId || rankedFacilities.some((facility) => facility.id === selectedFacilityId)) return;
-    setSelectedFacilityId(rankedFacilities[0]?.id ?? null);
-  }, [rankedFacilities, selectedFacilityId]);
-
-  useEffect(() => {
     const suggestedFilter = mapContext.suggestedFilterId as FeatureFilterId;
     if (suggestedFilter && suggestedFilter !== activeFilter) {
       setActiveFilter(suggestedFilter);
       return;
     }
 
-    const topMatch = sortFacilitiesForMap(
-      suggestedFilter === activeFilter ? facilities : filteredFacilities,
-      selectedSectionId,
-      sensoryProfile
-    )[0];
-
-    if (topMatch?.id && topMatch.id !== selectedFacilityId) {
-      setSelectedFacilityId(topMatch.id);
+    if (!selectedFacilityId && rankedFacilities[0]?.id) {
+      setSelectedFacilityId(rankedFacilities[0].id);
     }
-  }, [activeFilter, facilities, filteredFacilities, mapContext.suggestedFilterId, selectedFacilityId, selectedSectionId, sensoryProfile]);
+  }, [activeFilter, mapContext.suggestedFilterId, rankedFacilities, selectedFacilityId]);
 
   useEffect(() => {
     // Dynamically import mapbox-gl to avoid SSR issues
