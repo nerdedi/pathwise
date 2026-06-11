@@ -1,9 +1,9 @@
 "use client";
 
 import {
-  buildRouteSummary,
-  getSectionMapConfig,
-  sortFacilitiesForMap,
+    buildRouteSummary,
+    getSectionMapConfig,
+    sortFacilitiesForMap,
 } from "@/lib/venue-map";
 import type { SensoryProfile } from "@/types/sensory-profile";
 import type { Facility, FacilityType, VenueLocation } from "@/types/venue";
