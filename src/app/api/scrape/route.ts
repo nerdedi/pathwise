@@ -1,4 +1,5 @@
 import { crawlVenueSite, scrapeVenueUrl } from "@/lib/firecrawl";
+import { fetchGooglePlaceInsights } from "@/lib/google-places";
 import { generateJson } from "@/lib/gemini";
 import { logError } from "@/lib/logger";
 import { VENUE_EXTRACTION_SYSTEM_PROMPT } from "@/lib/prompts";
@@ -8,6 +9,32 @@ import { z } from "zod";
 const RequestSchema = z.object({
   url: z.string().url("Please provide a valid URL"),
 });
+
+function extractSiteUpdates(markdown: string) {
+  const lines = markdown
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const updateKeywords = [
+    "alert",
+    "update",
+    "changed",
+    "closed",
+    "maintenance",
+    "cancelled",
+    "service",
+    "disruption",
+    "today",
+  ];
+
+  const updates = lines
+    .filter((line) => updateKeywords.some((keyword) => line.toLowerCase().includes(keyword)))
+    .filter((line) => line.length >= 12 && line.length <= 220)
+    .slice(0, 6);
+
+  return Array.from(new Set(updates));
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,9 +59,26 @@ export async function POST(req: NextRequest) {
 
     // 3. Extract structured venue data with Gemini
     const userMessage = `Extract structured venue data from the following website content.\n\nWebsite URL: ${url}\n\nContent:\n${combinedContent}`;
-    const venueData = await generateJson(VENUE_EXTRACTION_SYSTEM_PROMPT, userMessage);
+    const venueData = (await generateJson(VENUE_EXTRACTION_SYSTEM_PROMPT, userMessage)) as Record<string, unknown>;
 
-    return NextResponse.json({ venueData });
+    const googleInsights = await fetchGooglePlaceInsights(
+      `${String(venueData.name ?? "")} ${String(venueData.address ?? "")} ${String(venueData.suburb ?? "")}`.trim()
+    );
+
+    const liveUpdates = extractSiteUpdates(combinedContent);
+
+    const enrichedVenueData = {
+      ...venueData,
+      liveUpdates,
+      externalInsights: {
+        ...(typeof venueData.externalInsights === "object" && venueData.externalInsights !== null
+          ? (venueData.externalInsights as Record<string, unknown>)
+          : {}),
+        ...(googleInsights ?? {}),
+      },
+    };
+
+    return NextResponse.json({ venueData: enrichedVenueData });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(

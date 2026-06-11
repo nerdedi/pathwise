@@ -14,17 +14,35 @@ const RequestSchema = z.object({
   venueData: z.record(z.unknown()),
   sensoryProfile: z.record(z.unknown()),
   visitDate: z.string().optional(), // YYYY-MM-DD
+  visitTime: z.string().optional(), // HH:MM
+  arriveBy: z.boolean().optional(),
   fromSuburb: z.string().optional(),
 });
+
+function addHoursToTimeString(time: string, hoursToAdd: number) {
+  const [rawHours, rawMinutes] = time.split(":").map((value) => Number(value));
+  const hours = Number.isFinite(rawHours) ? rawHours : 10;
+  const minutes = Number.isFinite(rawMinutes) ? rawMinutes : 0;
+  const totalMinutes = (hours * 60 + minutes + hoursToAdd * 60) % (24 * 60);
+  const normalizedHours = Math.floor(totalMinutes / 60)
+    .toString()
+    .padStart(2, "0");
+  const normalizedMinutes = (totalMinutes % 60).toString().padStart(2, "0");
+  return `${normalizedHours}:${normalizedMinutes}`;
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { venueData, sensoryProfile, visitDate, fromSuburb } =
+    const { venueData, sensoryProfile, visitDate, visitTime, arriveBy, fromSuburb } =
       RequestSchema.parse(body);
 
     const venue = venueData as unknown as VenueData;
     const profile = sensoryProfile as unknown as SensoryProfile;
+
+    const preferredTime = visitTime && /^\d{2}:\d{2}$/.test(visitTime) ? visitTime : "10:00";
+    const outboundTime = preferredTime.replace(":", "");
+    const returnTime = addHoursToTimeString(preferredTime, 3).replace(":", "");
 
     // Run weather + transport in parallel
     const [weatherDays, tripPlanTo, tripPlanFrom] = await Promise.allSettled([
@@ -36,7 +54,8 @@ export async function POST(req: NextRequest) {
             originName: fromSuburb,
             destinationAddress: `${venue.address}, ${venue.suburb}`,
             date: visitDate.replace(/-/g, ""),
-            time: "1000",
+            time: outboundTime,
+            arriveBy,
             routePreference: profile.routePreference,
             wheelchairRequired: profile.needsMobilityAccess || profile.usesMobilityAid,
             needsLevelBoardingInfo: profile.needsLevelBoardingInfo,
@@ -51,7 +70,7 @@ export async function POST(req: NextRequest) {
             originName: `${venue.address}, ${venue.suburb}`,
             destinationAddress: fromSuburb,
             date: visitDate.replace(/-/g, ""),
-            time: "1500",
+            time: returnTime,
             arriveBy: false,
             routePreference: profile.routePreference,
             wheelchairRequired: profile.needsMobilityAccess || profile.usesMobilityAid,

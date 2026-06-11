@@ -134,6 +134,14 @@ export interface VenueData {
   accessibilityContact?: string;
   accessibilityPhone?: string;
   accessibilityEmail?: string;
+  liveUpdates?: string[];
+  externalInsights?: {
+    source?: string;
+    averageRating?: number;
+    totalRatings?: number;
+    openNow?: boolean;
+    reviewHighlights?: string[];
+  };
 
   scrapedAt: string;
 }

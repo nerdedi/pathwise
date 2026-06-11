@@ -388,13 +388,21 @@ export default function SocialStoryViewer({
 
         {/* Printable story */}
         <div ref={printRef}>
+          {storyPanels.length === 0 && (
+            <div className="rounded-2xl border border-sage-100 bg-white p-6 text-center">
+              <p className="text-sage-700">
+                We couldn&rsquo;t load story steps yet. Please return to your guide and regenerate your itinerary.
+              </p>
+            </div>
+          )}
+
           {/* Print header */}
           <div className="hidden print:block text-center mb-8">
             <h1 className="text-2xl font-bold">My visit to {venueName}</h1>
             <p className="text-sm text-gray-500 mt-1">Made with Pathwise</p>
           </div>
 
-          {focusMode && activePanel ? (
+          {storyPanels.length > 0 && focusMode && activePanel ? (
             <div className="space-y-4">
               {(() => {
                 const activeContent = getSocialStoryPanelContent(activePanel, selectedLanguage);
@@ -498,7 +506,7 @@ export default function SocialStoryViewer({
                 </Button>
               </div>
             </div>
-          ) : (
+          ) : storyPanels.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {storyPanels.map((panel, index) => {
               const emotionKey = panel.emotion ?? "calm";
@@ -629,7 +637,7 @@ export default function SocialStoryViewer({
               );
             })}
           </div>
-          )}
+          ) : null}
 
           {/* Print footer */}
           <div className="hidden print:block mt-8 text-center text-xs text-gray-400 border-t pt-4">

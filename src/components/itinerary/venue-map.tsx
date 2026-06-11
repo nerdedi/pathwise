@@ -62,6 +62,8 @@ export default function VenueMap({
 }: VenueMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const mapboxRef = useRef<typeof import("mapbox-gl").default | null>(null);
+  const venueMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const markerRefs = useRef<mapboxgl.Marker[]>([]);
   const markerElementsRef = useRef<Record<string, HTMLDivElement>>({});
   const [activeFilter, setActiveFilter] = useState<FeatureFilterId>("all");
@@ -150,7 +152,7 @@ export default function VenueMap({
   }, [activeFilter, mapContext.suggestedFilterId, rankedFacilities, selectedFacilityId]);
 
   useEffect(() => {
-    // Dynamically import mapbox-gl to avoid SSR issues
+    // Dynamically import mapbox-gl to avoid SSR issues and initialize once per venue center
     let cancelled = false;
 
     async function initMap() {
@@ -161,15 +163,15 @@ export default function VenueMap({
       const container = mapContainerRef.current;
       if (!token || !container || cancelled) return;
 
-      markerRefs.current.forEach((marker) => marker.remove());
-      markerRefs.current = [];
+      mapboxRef.current = mapboxgl;
 
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
 
-      container.innerHTML = "";
+      // Required by Mapbox: container must be empty before initializing.
+      container.replaceChildren();
 
       mapboxgl.accessToken = token;
 
@@ -190,93 +192,36 @@ export default function VenueMap({
       map.on("load", () => {
         if (cancelled) return;
 
-        const bounds = new mapboxgl.LngLatBounds([center.lng, center.lat], [center.lng, center.lat]);
-        facilitiesWithLocation.forEach((facility) => {
-          bounds.extend([facility.mapLocation.lng, facility.mapLocation.lat]);
-        });
-
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, {
-            padding: 60,
-            maxZoom: 18,
-            duration: 0,
+        if (!map.getSource("selected-path")) {
+          map.addSource("selected-path", {
+            type: "geojson",
+            data: {
+              type: "FeatureCollection",
+              features: [],
+            },
           });
         }
 
-        map.addSource("selected-path", {
-          type: "geojson",
-          data: {
-            type: "FeatureCollection",
-            features: [],
-          },
-        });
+        if (!map.getLayer("selected-path-line")) {
+          map.addLayer({
+            id: "selected-path-line",
+            type: "line",
+            source: "selected-path",
+            paint: {
+              "line-color": "#3f8a43",
+              "line-width": 4,
+              "line-dasharray": [2, 1],
+              "line-opacity": 0.8,
+            },
+          });
+        }
 
-        map.addLayer({
-          id: "selected-path-line",
-          type: "line",
-          source: "selected-path",
-          paint: {
-            "line-color": "#3f8a43",
-            "line-width": 4,
-            "line-dasharray": [2, 1],
-            "line-opacity": 0.8,
-          },
-        });
+        map.addControl(new mapboxgl.NavigationControl(), "top-right");
+        map.addControl(
+          new mapboxgl.GeolocateControl({ positionOptions: { enableHighAccuracy: true } }),
+          "top-right"
+        );
       });
-
-      // Venue centre marker
-      new mapboxgl.Marker({ color: "#3f8a43" })
-        .setLngLat([center.lng, center.lat])
-        .setPopup(new mapboxgl.Popup().setText(venueName))
-        .addTo(map);
-
-      // Add facility markers (those with coordinates)
-      markerElementsRef.current = {};
-
-      mappedFacilities.forEach((facility) => {
-          const icon = FACILITY_ICONS[facility.type] ?? { emoji: "📍", color: "#374151" };
-
-          const el = document.createElement("div");
-          el.className = "facility-marker";
-          el.style.cssText = `
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: white;
-            border: 2px solid ${icon.color};
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
-          `;
-          el.textContent = icon.emoji;
-          el.setAttribute("aria-label", facility.label);
-          el.setAttribute("role", "button");
-          el.setAttribute("tabindex", "0");
-          el.addEventListener("click", () => setSelectedFacilityId(facility.id));
-          markerElementsRef.current[facility.id] = el;
-
-          const marker = new mapboxgl.Marker({ element: el })
-            .setLngLat([facility.mapLocation.lng, facility.mapLocation.lat])
-            .setPopup(
-              new mapboxgl.Popup({ offset: 20 }).setHTML(
-                `<strong>${facility.label}</strong>${facility.description ? `<br/><span style="font-size:12px">${facility.description}</span>` : ""}${facility.floor ? `<br/><span style="font-size:11px;color:#666">Floor: ${facility.floor}</span>` : ""}${facility.isApproximateLocation ? `<br/><span style="font-size:11px;color:#666">Approximate map position</span>` : ""}`
-              )
-            )
-            .addTo(map);
-
-          markerRefs.current.push(marker);
-        });
-
-      // Navigation controls
-      map.addControl(new mapboxgl.NavigationControl(), "top-right");
-      map.addControl(
-        new mapboxgl.GeolocateControl({ positionOptions: { enableHighAccuracy: true } }),
-        "top-right"
-      );
     }
 
     initMap();
@@ -285,16 +230,81 @@ export default function VenueMap({
       cancelled = true;
       markerRefs.current.forEach((marker) => marker.remove());
       markerRefs.current = [];
+      venueMarkerRef.current?.remove();
+      venueMarkerRef.current = null;
 
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
-
-      if (mapContainerRef.current) {
-        mapContainerRef.current.innerHTML = "";
-      }
     };
+  }, [center.lat, center.lng]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const mapboxgl = mapboxRef.current;
+    if (!map || !mapboxgl) return;
+
+    markerRefs.current.forEach((marker) => marker.remove());
+    markerRefs.current = [];
+    markerElementsRef.current = {};
+
+    venueMarkerRef.current?.remove();
+    venueMarkerRef.current = new mapboxgl.Marker({ color: "#3f8a43" })
+      .setLngLat([center.lng, center.lat])
+      .setPopup(new mapboxgl.Popup().setText(venueName))
+      .addTo(map);
+
+    mappedFacilities.forEach((facility) => {
+      const icon = FACILITY_ICONS[facility.type] ?? { emoji: "📍", color: "#374151" };
+
+      const el = document.createElement("div");
+      el.className = "facility-marker";
+      el.style.cssText = `
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: white;
+        border: 2px solid ${icon.color};
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+      `;
+      el.textContent = icon.emoji;
+      el.setAttribute("aria-label", facility.label);
+      el.setAttribute("role", "button");
+      el.setAttribute("tabindex", "0");
+      el.addEventListener("click", () => setSelectedFacilityId(facility.id));
+      markerElementsRef.current[facility.id] = el;
+
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat([facility.mapLocation.lng, facility.mapLocation.lat])
+        .setPopup(
+          new mapboxgl.Popup({ offset: 20 }).setHTML(
+            `<strong>${facility.label}</strong>${facility.description ? `<br/><span style="font-size:12px">${facility.description}</span>` : ""}${facility.floor ? `<br/><span style="font-size:11px;color:#666">Floor: ${facility.floor}</span>` : ""}${facility.isApproximateLocation ? `<br/><span style="font-size:11px;color:#666">Approximate map position</span>` : ""}`
+          )
+        )
+        .addTo(map);
+
+      markerRefs.current.push(marker);
+    });
+
+    const bounds = new mapboxgl.LngLatBounds([center.lng, center.lat], [center.lng, center.lat]);
+    facilitiesWithLocation.forEach((facility) => {
+      bounds.extend([facility.mapLocation.lng, facility.mapLocation.lat]);
+    });
+
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, {
+        padding: 60,
+        maxZoom: 18,
+        duration: 0,
+      });
+    }
   }, [center.lat, center.lng, facilitiesWithLocation, mappedFacilities, venueName]);
 
   useEffect(() => {

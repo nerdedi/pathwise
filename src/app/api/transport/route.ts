@@ -10,12 +10,32 @@ const RequestSchema = z.object({
   date: z.string().optional(), // YYYY-MM-DD
   time: z.string().optional(), // HH:MM
   arriveBy: z.boolean().optional(),
+  routePreference: z.enum(["balanced", "fastest", "quietest"]).optional(),
+  wheelchairRequired: z.boolean().optional(),
+  needsLevelBoardingInfo: z.boolean().optional(),
+  needsLiveLiftInfo: z.boolean().optional(),
+  needsOnboardToiletInfo: z.boolean().optional(),
+  crowdSensitivity: z.enum(["low", "medium", "high"]).optional(),
+  soundSensitivity: z.enum(["low", "medium", "high"]).optional(),
 });
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { from, to, date, time, arriveBy } = RequestSchema.parse(body);
+    const {
+      from,
+      to,
+      date,
+      time,
+      arriveBy,
+      routePreference,
+      wheelchairRequired,
+      needsLevelBoardingInfo,
+      needsLiveLiftInfo,
+      needsOnboardToiletInfo,
+      crowdSensitivity,
+      soundSensitivity,
+    } = RequestSchema.parse(body);
 
     const visitDate = date ?? format(new Date(), "yyyyMMdd");
     const visitTime = (time ?? "10:00").replace(":", "");
@@ -26,6 +46,13 @@ export async function POST(req: NextRequest) {
       date: visitDate.replace(/-/g, ""),
       time: visitTime,
       arriveBy,
+      routePreference,
+      wheelchairRequired,
+      needsLevelBoardingInfo,
+      needsLiveLiftInfo,
+      needsOnboardToiletInfo,
+      crowdSensitivity,
+      soundSensitivity,
     });
 
     if (!plan) {

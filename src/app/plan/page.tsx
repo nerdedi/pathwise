@@ -13,6 +13,8 @@ export default function PlanPage() {
   const [url, setUrl] = useState("");
   const [suburb, setSuburb] = useState("");
   const [visitDate, setVisitDate] = useState("");
+  const [visitTime, setVisitTime] = useState("10:00");
+  const [arriveBy, setArriveBy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [step, setStep] = useState<"idle" | "scraping" | "generating">("idle");
@@ -83,6 +85,8 @@ export default function PlanPage() {
           venueData,
           sensoryProfile,
           visitDate: visitDate || undefined,
+          visitTime: visitTime || undefined,
+          arriveBy,
           fromSuburb: suburb || undefined,
         }),
       });
@@ -179,6 +183,29 @@ export default function PlanPage() {
               disabled={loading}
               min={new Date().toISOString().split("T")[0]}
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Preferred time"
+              hint="Used for transport planning"
+              type="time"
+              value={visitTime}
+              onChange={(e) => setVisitTime(e.target.value)}
+              disabled={loading}
+            />
+            <label className="flex flex-col justify-end text-xs text-sage-600">
+              <span className="mb-2">Time mode</span>
+              <select
+                value={arriveBy ? "arrive" : "leave"}
+                onChange={(e) => setArriveBy(e.target.value === "arrive")}
+                disabled={loading}
+                className="h-11 rounded-xl border border-sage-200 px-3 text-sm bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+              >
+                <option value="leave">Leave at this time</option>
+                <option value="arrive">Arrive by this time</option>
+              </select>
+            </label>
           </div>
 
           {error && (

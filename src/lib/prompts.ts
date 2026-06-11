@@ -57,7 +57,15 @@ Return ONLY valid JSON with EXACTLY these top-level keys (no others, no markdown
   "signageDescription": "description",
   "allDayActivities": ["Activity 1", "Activity 2"],
   "tipFromVisitors": "helpful tip",
-  "communityNotes": []
+  "communityNotes": [],
+  "liveUpdates": ["Service update or temporary closure note"],
+  "externalInsights": {
+    "source": "google-places",
+    "averageRating": 4.3,
+    "totalRatings": 1284,
+    "openNow": true,
+    "reviewHighlights": ["Helpful accessibility tip from reviews"]
+  }
 }
 
 Focus especially on:
@@ -79,6 +87,8 @@ Important extraction details:
 - If the site describes walking routes or how to reach a feature (e.g. "turn left after entry", "near gallery 3"), include that guidance in the facility description.
 - For cafés and food courts, include as many real menu items and prices as you can find.
 - Include venue-specific risk factors, safety notes, and emergency exit information whenever the site provides them.
+- Where official updates are shown (alerts, maintenance notices, temporary closures), include them in liveUpdates.
+- Use review text to fill practical gaps (parking, drop-off, menu tips, accessibility cues), but keep insights factual and concise.
 
 If information is not available on the website, use reasonable estimates based on the venue type and mark them clearly with a "(estimated)" suffix.
 Provide accessibility contact details if available, or suggest the venue's main contact number.

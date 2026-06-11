@@ -36,6 +36,7 @@ import SupportToolkit from "./support-toolkit";
 import TransportSection from "./transport-section";
 import VenueMap from "./venue-map";
 import WeatherCard from "./weather-card";
+import MoodCheckin from "./mood-checkin";
 
 interface ItineraryViewProps {
   itinerary: Itinerary;
@@ -227,6 +228,8 @@ export default function ItineraryView({
   const weatherPackingTips = draftItinerary.weather
     ? getWeatherPackingTips(draftItinerary.weather as unknown as WeatherDay)
     : [];
+  const liveUpdates = venue.liveUpdates ?? [];
+  const reviewHighlights = venue.externalInsights?.reviewHighlights ?? [];
 
   useEffect(() => {
     setDraftItinerary(itinerary);
@@ -554,6 +557,58 @@ export default function ItineraryView({
           venueRiskFactors={venue.riskFactors}
           emergencyExits={venue.emergencyExits}
         />
+
+        <MoodCheckin
+          itineraryId={draftItinerary.id}
+          profile={draftItinerary.sensoryProfile}
+          crisisPlan={draftItinerary.crisisPlan}
+        />
+
+        {(liveUpdates.length > 0 || reviewHighlights.length > 0 || venue.externalInsights?.averageRating) && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">📣 Live updates and practical tips</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-3">
+              {typeof venue.externalInsights?.averageRating === "number" && (
+                <p className="text-sm text-sage-700">
+                  Community signal: {venue.externalInsights.averageRating.toFixed(1)}/5
+                  {typeof venue.externalInsights.totalRatings === "number"
+                    ? ` (${venue.externalInsights.totalRatings.toLocaleString()} ratings)`
+                    : ""}
+                </p>
+              )}
+
+              {liveUpdates.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-warm-700 mb-1">From the venue site</p>
+                  <ul className="space-y-1.5">
+                    {liveUpdates.map((update) => (
+                      <li key={update} className="text-sm text-sage-700 flex gap-2">
+                        <span className="text-sage-400 mt-0.5">•</span>
+                        <span>{update}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {reviewHighlights.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-calm-700 mb-1">Visitor-reported details</p>
+                  <ul className="space-y-1.5">
+                    {reviewHighlights.slice(0, 5).map((tip) => (
+                      <li key={tip} className="text-sm text-sage-700 flex gap-2">
+                        <span className="text-sage-400 mt-0.5">•</span>
+                        <span>{tip}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Venue map */}
         {venue.location && venue.facilities && (
