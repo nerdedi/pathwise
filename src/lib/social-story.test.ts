@@ -173,6 +173,21 @@ describe("social story helpers", () => {
     expect(normalized[0].translations?.es?.sensoryCue).toBe("Puede ser ruidoso");
   });
 
+  it("drops translations with undefined language payloads", () => {
+    const normalized = normalizeSocialStoryPanels([
+      {
+        sequence: 1,
+        title: "Step",
+        text: "Base text",
+        translations: {
+          es: undefined as unknown as NonNullable<SocialStoryPanel["translations"]>["es"],
+        },
+      },
+    ]);
+
+    expect(normalized[0].translations).toBeUndefined();
+  });
+
   it("builds fallback social story panels from sections and reminders", () => {
     const panels = buildFallbackSocialStoryPanels({
       venueName: "Calm Museum",

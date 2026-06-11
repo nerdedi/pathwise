@@ -268,4 +268,29 @@ describe("transport-nsw helpers", () => {
     expect(modes).toContain("bus");
     expect(modes).toContain("ferry");
   });
+
+  it("preserves unknown transport mode labels when no mapping exists", async () => {
+    process.env.TRANSPORT_NSW_API_KEY = "test-key";
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        journeys: [{
+          legs: [{
+            transportation: { product: { name: "scooter" }, number: "S1" },
+            origin: { name: "A", departureTimePlanned: "2026-06-11T10:00:00+10:00" },
+            destination: { name: "B", arrivalTimePlanned: "2026-06-11T10:10:00+10:00" },
+          }],
+        }],
+      }),
+    }) as typeof fetch;
+
+    const plan = await getTripPlan({
+      originName: "A",
+      destinationAddress: "B",
+      date: "20260611",
+      time: "1000",
+    });
+
+    expect(plan?.legs[0]?.mode).toBe("scooter");
+  });
 });
