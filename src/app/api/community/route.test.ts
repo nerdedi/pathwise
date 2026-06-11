@@ -392,6 +392,104 @@ describe("community route", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 500 when report DB update fails", async () => {
+    const loadQuery = {
+      select: vi.fn(() => loadQuery),
+      eq: vi.fn(() => loadQuery),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: "row-1", user_id: "owner-1", helpful_count: 2, report_count: 0 },
+        error: null,
+      }),
+    };
+
+    const reportInsert = vi.fn().mockResolvedValue({ error: null });
+
+    const updateQuery = {
+      update: vi.fn(() => updateQuery),
+      eq: vi.fn().mockResolvedValue({ error: new Error("update failed") }),
+    };
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-2" } } }) },
+      from: vi.fn(() => ({
+        ...loadQuery,
+        ...updateQuery,
+        insert: reportInsert,
+      })),
+    } as never);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/community", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entryId: "11111111-1111-4111-8111-111111111111",
+          action: "report",
+        }),
+      }) as never
+    );
+
+    expect(response.status).toBe(500);
+  });
+
+  it("returns 500 when helpful vote DB update fails", async () => {
+    const loadQuery = {
+      select: vi.fn(() => loadQuery),
+      eq: vi.fn(() => loadQuery),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: "row-1", user_id: "owner-1", helpful_count: 2 },
+        error: null,
+      }),
+    };
+
+    const voteInsert = vi.fn().mockResolvedValue({ error: null });
+
+    const updateQuery = {
+      update: vi.fn(() => updateQuery),
+      eq: vi.fn().mockResolvedValue({ error: new Error("update failed") }),
+    };
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-2" } } }) },
+      from: vi.fn(() => ({
+        ...loadQuery,
+        ...updateQuery,
+        insert: voteInsert,
+      })),
+    } as never);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/community", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entryId: "11111111-1111-4111-8111-111111111111" }),
+      }) as never
+    );
+
+    expect(response.status).toBe(500);
+  });
+
+  it("returns 500 when POST DB insert fails", async () => {
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } } }) },
+      from: vi.fn(() => ({ insert: vi.fn().mockResolvedValue({ error: new Error("db error") }) })),
+    } as never);
+
+    const response = await POST(
+      new Request("http://localhost/api/community", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          venueUrl: "https://example.com",
+          venueName: "Example Venue",
+          overallRating: 8,
+        }),
+      }) as never
+    );
+
+    expect(response.status).toBe(500);
+  });
+
   it("blocks users from voting on their own note", async () => {
     const loadQuery = {
       select: vi.fn(() => loadQuery),
