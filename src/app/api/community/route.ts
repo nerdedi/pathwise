@@ -19,6 +19,8 @@ const PostSchema = z.object({
 
 const PatchSchema = z.object({
   entryId: z.string().uuid(),
+  action: z.enum(["helpful", "report"]).default("helpful"),
+  reason: z.string().trim().max(300).optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -31,6 +33,7 @@ export async function GET(req: NextRequest) {
       .from("venue_community_data")
       .select("id, overall_rating, notes, tips, visit_date, helpful_count, created_at")
       .eq("venue_url", parsed.venueUrl)
+      .lt("report_count", 3)
       .order("helpful_count", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(10);
@@ -114,7 +117,7 @@ export async function PATCH(req: NextRequest) {
 
     const { data: existing, error: loadError } = await supabase
       .from("venue_community_data")
-      .select("id, user_id, helpful_count")
+      .select("id, user_id, helpful_count, report_count")
       .eq("id", payload.entryId)
       .maybeSingle();
 
@@ -125,9 +128,44 @@ export async function PATCH(req: NextRequest) {
 
     if (existing.user_id && existing.user_id === user.id) {
       return NextResponse.json(
-        { error: "You cannot vote on your own note." },
+        {
+          error:
+            payload.action === "report"
+              ? "You cannot report your own note."
+              : "You cannot vote on your own note.",
+        },
         { status: 400 }
       );
+    }
+
+    if (payload.action === "report") {
+      const { error: reportError } = await supabase.from("venue_community_reports").insert({
+        entry_id: payload.entryId,
+        user_id: user.id,
+        reason: payload.reason,
+      });
+
+      if (reportError) {
+        if ((reportError as { code?: string }).code === "23505") {
+          return NextResponse.json(
+            { error: "You have already reported this note." },
+            { status: 409 }
+          );
+        }
+
+        throw reportError;
+      }
+
+      const nextReportCount = Number((existing as { report_count?: number }).report_count ?? 0) + 1;
+
+      const { error: updateReportError } = await supabase
+        .from("venue_community_data")
+        .update({ report_count: nextReportCount })
+        .eq("id", payload.entryId);
+
+      if (updateReportError) throw updateReportError;
+
+      return NextResponse.json({ ok: true, reportCount: nextReportCount });
     }
 
     const { error: voteError } = await supabase.from("venue_community_votes").insert({
@@ -166,7 +204,7 @@ export async function PATCH(req: NextRequest) {
 
     logError("/api/community PATCH", err);
     return NextResponse.json(
-      { error: "Failed to record helpful vote." },
+      { error: "Failed to update community note." },
       { status: 500 }
     );
   }

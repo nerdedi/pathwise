@@ -218,6 +218,8 @@ export default function ItineraryView({
   const [submittingCommunity, setSubmittingCommunity] = useState(false);
   const [votingCommunityEntryId, setVotingCommunityEntryId] = useState<string | null>(null);
   const [votedCommunityEntryIds, setVotedCommunityEntryIds] = useState<string[]>([]);
+  const [reportingCommunityEntryId, setReportingCommunityEntryId] = useState<string | null>(null);
+  const [reportedCommunityEntryIds, setReportedCommunityEntryIds] = useState<string[]>([]);
   const [shareEmail, setShareEmail] = useState("");
   const [shareRole, setShareRole] = useState<CollaborationRole>("viewer");
   const [privateNotesDraft, setPrivateNotesDraft] = useState(itinerary.privateNotes ?? "");
@@ -235,6 +237,7 @@ export default function ItineraryView({
   const reviewHighlights = venue.externalInsights?.reviewHighlights ?? [];
   const estimatedFieldCount = venue.sourceMeta?.estimatedFieldPaths?.length ?? 0;
   const communityVotesKey = `pathwise_community_votes_${draftItinerary.id}`;
+  const communityReportsKey = `pathwise_community_reports_${draftItinerary.id}`;
 
   useEffect(() => {
     setDraftItinerary(itinerary);
@@ -467,6 +470,20 @@ export default function ItineraryView({
     }
   }, [communityVotesKey]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const stored = window.localStorage.getItem(communityReportsKey);
+    if (!stored) return;
+
+    try {
+      const ids = JSON.parse(stored) as string[];
+      setReportedCommunityEntryIds(Array.isArray(ids) ? ids : []);
+    } catch {
+      setReportedCommunityEntryIds([]);
+    }
+  }, [communityReportsKey]);
+
   const markCommunityHelpful = async (entryId: string) => {
     if (votedCommunityEntryIds.includes(entryId)) {
       setSaveMessage("You already marked this note as helpful.");
@@ -505,6 +522,43 @@ export default function ItineraryView({
       setSaveMessage(err instanceof Error ? err.message : "Failed to register helpful vote.");
     } finally {
       setVotingCommunityEntryId(null);
+    }
+  };
+
+  const reportCommunityEntry = async (entryId: string) => {
+    if (reportedCommunityEntryIds.includes(entryId)) {
+      setSaveMessage("You already reported this note.");
+      return;
+    }
+
+    setReportingCommunityEntryId(entryId);
+    try {
+      const res = await fetch("/api/community", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entryId,
+          action: "report",
+          reason: "Flagged by user from itinerary view",
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to report note");
+      }
+
+      const nextReports = [...reportedCommunityEntryIds, entryId];
+      setReportedCommunityEntryIds(nextReports);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(communityReportsKey, JSON.stringify(nextReports));
+      }
+
+      setSaveMessage("Thanks — the note has been flagged for review.");
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : "Failed to report note.");
+    } finally {
+      setReportingCommunityEntryId(null);
     }
   };
 
@@ -867,7 +921,7 @@ export default function ItineraryView({
                     </div>
                     {entry.notes && <p className="text-sm text-sage-700">{entry.notes}</p>}
                     {entry.tips && <p className="text-sm text-sage-600 mt-1">Tip: {entry.tips}</p>}
-                    <div className="mt-2 flex items-center gap-2">
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
                       <Button
                         type="button"
                         variant="outline"
@@ -889,6 +943,24 @@ export default function ItineraryView({
                         {votedCommunityEntryIds.includes(entry.id)
                           ? "Helpful recorded"
                           : "Mark helpful"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={
+                          reportingCommunityEntryId === entry.id ||
+                          reportedCommunityEntryIds.includes(entry.id)
+                        }
+                        onClick={() => {
+                          void reportCommunityEntry(entry.id);
+                        }}
+                      >
+                        {reportedCommunityEntryIds.includes(entry.id)
+                          ? "Reported"
+                          : reportingCommunityEntryId === entry.id
+                          ? "Reporting…"
+                          : "Report note"}
                       </Button>
                       <span className="text-xs text-sage-500">
                         Helpful: {entry.helpful_count ?? 0}

@@ -21,6 +21,7 @@ describe("community route", () => {
     const query = {
       select: vi.fn(() => query),
       eq: vi.fn(() => query),
+      lt: vi.fn(() => query),
       order: vi.fn(() => query),
       limit: vi.fn().mockResolvedValue({
         data: [
@@ -56,6 +57,7 @@ describe("community route", () => {
     const query = {
       select: vi.fn(() => query),
       eq: vi.fn(() => query),
+      lt: vi.fn(() => query),
       order: vi.fn(() => query),
       limit: vi.fn().mockResolvedValue({ data: null, error: new Error("db failed") }),
     };
@@ -271,6 +273,123 @@ describe("community route", () => {
 
     expect(response.status).toBe(409);
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("records a moderation report for another user's note", async () => {
+    const loadQuery = {
+      select: vi.fn(() => loadQuery),
+      eq: vi.fn(() => loadQuery),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: "row-1", user_id: "owner-1", helpful_count: 2, report_count: 1 },
+        error: null,
+      }),
+    };
+
+    const updateQuery = {
+      update: vi.fn(() => updateQuery),
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    };
+
+    const reportInsert = vi.fn().mockResolvedValue({ error: null });
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-2" } } }) },
+      from: vi.fn(() => ({
+        ...loadQuery,
+        ...updateQuery,
+        insert: reportInsert,
+      })),
+    } as never);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/community", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entryId: "11111111-1111-4111-8111-111111111111",
+          action: "report",
+          reason: "Unsafe advice",
+        }),
+      }) as never
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { reportCount: number };
+    expect(payload.reportCount).toBe(2);
+    expect(reportInsert).toHaveBeenCalledWith({
+      entry_id: "11111111-1111-4111-8111-111111111111",
+      user_id: "user-2",
+      reason: "Unsafe advice",
+    });
+  });
+
+  it("returns 409 when user already reported the note", async () => {
+    const loadQuery = {
+      select: vi.fn(() => loadQuery),
+      eq: vi.fn(() => loadQuery),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: "row-1", user_id: "owner-1", helpful_count: 2, report_count: 1 },
+        error: null,
+      }),
+    };
+
+    const reportInsert = vi.fn().mockResolvedValue({
+      error: { code: "23505", message: "duplicate key value" },
+    });
+
+    const update = vi.fn(() => ({ eq: vi.fn() }));
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-2" } } }) },
+      from: vi.fn(() => ({
+        ...loadQuery,
+        insert: reportInsert,
+        update,
+      })),
+    } as never);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/community", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entryId: "11111111-1111-4111-8111-111111111111",
+          action: "report",
+        }),
+      }) as never
+    );
+
+    expect(response.status).toBe(409);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("blocks users from reporting their own note", async () => {
+    const loadQuery = {
+      select: vi.fn(() => loadQuery),
+      eq: vi.fn(() => loadQuery),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: "row-1", user_id: "user-2", helpful_count: 2, report_count: 0 },
+        error: null,
+      }),
+    };
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-2" } } }) },
+      from: vi.fn(() => loadQuery),
+    } as never);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/community", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entryId: "11111111-1111-4111-8111-111111111111",
+          action: "report",
+        }),
+      }) as never
+    );
+
+    expect(response.status).toBe(400);
   });
 
   it("blocks users from voting on their own note", async () => {
