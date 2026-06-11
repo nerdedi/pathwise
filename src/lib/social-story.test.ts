@@ -1,8 +1,9 @@
 import type { SocialStoryPanel } from "@/types/itinerary";
 import { describe, expect, it } from "vitest";
 import {
-  getSocialStoryVisual,
+    buildFallbackSocialStoryPanels,
     getSocialStoryPanelContent,
+    getSocialStoryVisual,
     moveSocialStoryPanel,
     normalizeSocialStoryPanels,
     parseStoredSocialStory,
@@ -85,6 +86,7 @@ describe("social story helpers", () => {
     const stored = JSON.stringify(basePanels);
     expect(parseStoredSocialStory(stored)?.length).toBe(2);
     expect(parseStoredSocialStory("not-json")).toBeNull();
+    expect(parseStoredSocialStory(JSON.stringify({ not: "an-array" }))).toBeNull();
   });
 
   it("derives a universal visual cue for a panel", () => {
@@ -92,5 +94,75 @@ describe("social story helpers", () => {
 
     expect(visual.icon).toBe("🚪");
     expect(visual.label).toBe("Arrival");
+  });
+
+  it("falls back to generic wayfinding visual when no keyword matches", () => {
+    const visual = getSocialStoryVisual(
+      {
+        sequence: 1,
+        title: "Moments",
+        text: "A reflective moment",
+        keywords: ["reflection"],
+      },
+      "en"
+    );
+
+    expect(visual.icon).toBe("🗺️");
+    expect(visual.label).toBe("Wayfinding");
+  });
+
+  it("keeps sequence normalized when moving out of bounds", () => {
+    const moved = moveSocialStoryPanel(basePanels, 0, -1);
+
+    expect(moved[0].sequence).toBe(1);
+    expect(moved[1].sequence).toBe(2);
+    expect(moved[0].title).toBe(basePanels[0].title);
+  });
+
+  it("updates base language panel fields directly", () => {
+    const updated = updateSocialStoryPanelContent(basePanels, 1, "en", {
+      title: "  New check-in  ",
+      text: "  I can ask the desk team for support.  ",
+      keywords: [" help ", "", "help", "staff"],
+    });
+
+    expect(updated[1].title).toBe("New check-in");
+    expect(updated[1].text).toBe("I can ask the desk team for support.");
+    expect(updated[1].keywords).toEqual(["help", "staff"]);
+  });
+
+  it("builds fallback social story panels from sections and reminders", () => {
+    const panels = buildFallbackSocialStoryPanels({
+      venueName: "Calm Museum",
+      quietTimes: "Weekday mornings",
+      selfCareReminders: ["Use your grounding card."],
+      sections: [
+        {
+          id: "before-you-go",
+          title: "Before you go",
+          emoji: "📝",
+          content: "Pack your comfort items.",
+          details: ["Bring your headphones."],
+        },
+        {
+          id: "if-overwhelmed",
+          title: "If overwhelmed",
+          emoji: "🫶",
+          content: "Find a quiet space and pause.",
+          details: ["Ask staff for a calm corner."],
+        },
+      ],
+    });
+
+    expect(panels.length).toBeGreaterThanOrEqual(4);
+    expect(panels[0].title).toContain("Getting ready for Calm Museum");
+    expect(panels[0].sensoryCue).toContain("Weekday mornings");
+    expect(panels.some((panel) => panel.title === "If I feel overwhelmed")).toBe(true);
+    const overwhelmedStep = panels.find((panel) => panel.title === "If overwhelmed");
+    expect(overwhelmedStep?.sensoryCue).toContain("okay to pause");
+    expect(panels[panels.length - 2]?.supportTip).toBe("Use your grounding card.");
+    expect(panels.map((panel) => panel.sequence)).toEqual(
+      panels.map((_, index) => index + 1)
+    );
   });
 });
