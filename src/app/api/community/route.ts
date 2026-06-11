@@ -17,6 +17,10 @@ const PostSchema = z.object({
   visitDate: z.string().optional(),
 });
 
+const PatchSchema = z.object({
+  entryId: z.string().uuid(),
+});
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -27,6 +31,7 @@ export async function GET(req: NextRequest) {
       .from("venue_community_data")
       .select("id, overall_rating, notes, tips, visit_date, helpful_count, created_at")
       .eq("venue_url", parsed.venueUrl)
+      .order("helpful_count", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(10);
 
@@ -88,6 +93,64 @@ export async function POST(req: NextRequest) {
     logError("/api/community POST", err);
     return NextResponse.json(
       { error: "Failed to save community note." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const payload = PatchSchema.parse(body);
+
+    const { data: existing, error: loadError } = await supabase
+      .from("venue_community_data")
+      .select("id, user_id, helpful_count")
+      .eq("id", payload.entryId)
+      .maybeSingle();
+
+    if (loadError) throw loadError;
+    if (!existing) {
+      return NextResponse.json({ error: "Community note not found" }, { status: 404 });
+    }
+
+    if (existing.user_id && existing.user_id === user.id) {
+      return NextResponse.json(
+        { error: "You cannot vote on your own note." },
+        { status: 400 }
+      );
+    }
+
+    const nextHelpfulCount = Number(existing.helpful_count ?? 0) + 1;
+
+    const { error: updateError } = await supabase
+      .from("venue_community_data")
+      .update({ helpful_count: nextHelpfulCount })
+      .eq("id", payload.entryId);
+
+    if (updateError) throw updateError;
+
+    return NextResponse.json({ ok: true, helpfulCount: nextHelpfulCount });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: err.errors[0]?.message ?? "Invalid payload" },
+        { status: 400 }
+      );
+    }
+
+    logError("/api/community PATCH", err);
+    return NextResponse.json(
+      { error: "Failed to record helpful vote." },
       { status: 500 }
     );
   }

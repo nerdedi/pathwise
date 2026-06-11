@@ -1,6 +1,6 @@
 import { crawlVenueSite, scrapeVenueUrl } from "@/lib/firecrawl";
-import { fetchGooglePlaceInsights } from "@/lib/google-places";
 import { generateJson } from "@/lib/gemini";
+import { fetchGooglePlaceInsights } from "@/lib/google-places";
 import { logError } from "@/lib/logger";
 import { VENUE_EXTRACTION_SYSTEM_PROMPT } from "@/lib/prompts";
 import { NextRequest, NextResponse } from "next/server";
@@ -9,6 +9,26 @@ import { z } from "zod";
 const RequestSchema = z.object({
   url: z.string().url("Please provide a valid URL"),
 });
+
+function collectEstimatedFieldPaths(value: unknown, basePath = ""): string[] {
+  if (typeof value === "string") {
+    return value.toLowerCase().includes("(estimated)") && basePath ? [basePath] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) =>
+      collectEstimatedFieldPaths(item, `${basePath}[${index}]`)
+    );
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) =>
+      collectEstimatedFieldPaths(child, basePath ? `${basePath}.${key}` : key)
+    );
+  }
+
+  return [];
+}
 
 function extractSiteUpdates(markdown: string) {
   const lines = markdown
@@ -66,6 +86,9 @@ export async function POST(req: NextRequest) {
     );
 
     const liveUpdates = extractSiteUpdates(combinedContent);
+    const estimatedFieldPaths = Array.from(
+      new Set(collectEstimatedFieldPaths(venueData).slice(0, 40))
+    );
 
     const enrichedVenueData = {
       ...venueData,
@@ -74,7 +97,14 @@ export async function POST(req: NextRequest) {
         ...(typeof venueData.externalInsights === "object" && venueData.externalInsights !== null
           ? (venueData.externalInsights as Record<string, unknown>)
           : {}),
+        source: "google-places",
         ...(googleInsights ?? {}),
+      },
+      sourceMeta: {
+        sitePagesScanned: pages.length,
+        hasGoogleInsights: Boolean(googleInsights),
+        estimatedFieldPaths,
+        updatedAt: new Date().toISOString(),
       },
     };
 

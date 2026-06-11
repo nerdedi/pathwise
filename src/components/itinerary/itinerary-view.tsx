@@ -22,12 +22,14 @@ import {
     Printer,
     RefreshCw,
     Save,
+    ThumbsUp,
 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import AffirmationCard from "./affirmation-card";
 import FoodOptions from "./food-options";
+import MoodCheckin from "./mood-checkin";
 import OverwhelmedPlan from "./overwhelmed-plan";
 import PackingList from "./packing-list";
 import RiskAssessment from "./risk-assessment";
@@ -36,7 +38,6 @@ import SupportToolkit from "./support-toolkit";
 import TransportSection from "./transport-section";
 import VenueMap from "./venue-map";
 import WeatherCard from "./weather-card";
-import MoodCheckin from "./mood-checkin";
 
 interface ItineraryViewProps {
   itinerary: Itinerary;
@@ -215,6 +216,8 @@ export default function ItineraryView({
   const [communityNotes, setCommunityNotes] = useState("");
   const [communityTips, setCommunityTips] = useState("");
   const [submittingCommunity, setSubmittingCommunity] = useState(false);
+  const [votingCommunityEntryId, setVotingCommunityEntryId] = useState<string | null>(null);
+  const [votedCommunityEntryIds, setVotedCommunityEntryIds] = useState<string[]>([]);
   const [shareEmail, setShareEmail] = useState("");
   const [shareRole, setShareRole] = useState<CollaborationRole>("viewer");
   const [privateNotesDraft, setPrivateNotesDraft] = useState(itinerary.privateNotes ?? "");
@@ -230,6 +233,8 @@ export default function ItineraryView({
     : [];
   const liveUpdates = venue.liveUpdates ?? [];
   const reviewHighlights = venue.externalInsights?.reviewHighlights ?? [];
+  const estimatedFieldCount = venue.sourceMeta?.estimatedFieldPaths?.length ?? 0;
+  const communityVotesKey = `pathwise_community_votes_${draftItinerary.id}`;
 
   useEffect(() => {
     setDraftItinerary(itinerary);
@@ -448,6 +453,61 @@ export default function ItineraryView({
     void loadCommunity();
   }, [loadCommunity]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const stored = window.localStorage.getItem(communityVotesKey);
+    if (!stored) return;
+
+    try {
+      const ids = JSON.parse(stored) as string[];
+      setVotedCommunityEntryIds(Array.isArray(ids) ? ids : []);
+    } catch {
+      setVotedCommunityEntryIds([]);
+    }
+  }, [communityVotesKey]);
+
+  const markCommunityHelpful = async (entryId: string) => {
+    if (votedCommunityEntryIds.includes(entryId)) {
+      setSaveMessage("You already marked this note as helpful.");
+      return;
+    }
+
+    setVotingCommunityEntryId(entryId);
+    try {
+      const res = await fetch("/api/community", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entryId }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to register helpful vote");
+      }
+
+      setCommunityEntries((prev) =>
+        prev.map((entry) =>
+          entry.id === entryId
+            ? { ...entry, helpful_count: Number(data.helpfulCount ?? (entry.helpful_count ?? 0)) }
+            : entry
+        )
+      );
+
+      const nextVotes = [...votedCommunityEntryIds, entryId];
+      setVotedCommunityEntryIds(nextVotes);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(communityVotesKey, JSON.stringify(nextVotes));
+      }
+
+      setSaveMessage("Thanks — your feedback was recorded.");
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : "Failed to register helpful vote.");
+    } finally {
+      setVotingCommunityEntryId(null);
+    }
+  };
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       {/* Header */}
@@ -570,6 +630,22 @@ export default function ItineraryView({
               <CardTitle className="text-base">📣 Live updates and practical tips</CardTitle>
             </CardHeader>
             <CardContent className="pt-0 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <span className="text-xs bg-sage-100 text-sage-700 rounded-full px-2.5 py-1">
+                  Site pages scanned: {venue.sourceMeta?.sitePagesScanned ?? "n/a"}
+                </span>
+                {venue.sourceMeta?.hasGoogleInsights && (
+                  <span className="text-xs bg-calm-100 text-calm-700 rounded-full px-2.5 py-1">
+                    Includes maps insights
+                  </span>
+                )}
+                {estimatedFieldCount > 0 && (
+                  <span className="text-xs bg-warm-100 text-warm-700 rounded-full px-2.5 py-1">
+                    {estimatedFieldCount} field(s) estimated
+                  </span>
+                )}
+              </div>
+
               {typeof venue.externalInsights?.averageRating === "number" && (
                 <p className="text-sm text-sage-700">
                   Community signal: {venue.externalInsights.averageRating.toFixed(1)}/5
@@ -791,6 +867,33 @@ export default function ItineraryView({
                     </div>
                     {entry.notes && <p className="text-sm text-sage-700">{entry.notes}</p>}
                     {entry.tips && <p className="text-sm text-sage-600 mt-1">Tip: {entry.tips}</p>}
+                    <div className="mt-2 flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        disabled={
+                          votingCommunityEntryId === entry.id ||
+                          votedCommunityEntryIds.includes(entry.id)
+                        }
+                        onClick={() => {
+                          void markCommunityHelpful(entry.id);
+                        }}
+                      >
+                        {votingCommunityEntryId === entry.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <ThumbsUp className="w-3.5 h-3.5" />
+                        )}
+                        {votedCommunityEntryIds.includes(entry.id)
+                          ? "Helpful recorded"
+                          : "Mark helpful"}
+                      </Button>
+                      <span className="text-xs text-sage-500">
+                        Helpful: {entry.helpful_count ?? 0}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>

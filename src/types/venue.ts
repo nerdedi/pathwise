@@ -142,6 +142,12 @@ export interface VenueData {
     openNow?: boolean;
     reviewHighlights?: string[];
   };
+  sourceMeta?: {
+    sitePagesScanned?: number;
+    hasGoogleInsights?: boolean;
+    estimatedFieldPaths?: string[];
+    updatedAt?: string;
+  };
 
   scrapedAt: string;
 }
