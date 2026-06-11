@@ -224,6 +224,24 @@ describe("guide detail route", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 400 when PUT payload fails schema validation", async () => {
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "owner@example.com" } } }) },
+      from: vi.fn(),
+    } as never);
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary: { id: makeItinerary().id } }),
+      }) as never,
+      { params: Promise.resolve({ id: makeItinerary().id }) }
+    );
+
+    expect(response.status).toBe(400);
+  });
+
   it("allows editor collaborators to save unlocked sections via admin path", async () => {
     const sharedItinerary = makeItinerary({
       sharedWith: [{ email: "editor@example.com", role: "editor" }],
