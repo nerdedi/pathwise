@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  buildRouteSummary,
+  getSectionMapConfig,
+  sortFacilitiesForMap,
+} from "@/lib/venue-map";
+import type { SensoryProfile } from "@/types/sensory-profile";
 import type { Facility, FacilityType, VenueLocation } from "@/types/venue";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -7,6 +13,8 @@ interface VenueMapProps {
   center: VenueLocation;
   facilities: Facility[];
   venueName: string;
+  selectedSectionId?: string | null;
+  sensoryProfile?: SensoryProfile;
 }
 
 const FACILITY_ICONS: Record<string, { emoji: string; color: string }> = {
@@ -41,13 +49,21 @@ const FEATURE_FILTERS: Array<{ id: string; label: string; types: FacilityType[] 
 
 type FeatureFilterId = (typeof FEATURE_FILTERS)[number]["id"];
 
-export default function VenueMap({ center, facilities, venueName }: VenueMapProps) {
+export default function VenueMap({
+  center,
+  facilities,
+  venueName,
+  selectedSectionId,
+  sensoryProfile,
+}: VenueMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markerElementsRef = useRef<Record<string, HTMLDivElement>>({});
   const [activeFilter, setActiveFilter] = useState<FeatureFilterId>("all");
   const [selectedFacilityId, setSelectedFacilityId] = useState<string | null>(
     facilities.find((facility) => facility.location)?.id ?? facilities[0]?.id ?? null
   );
+  const mapContext = useMemo(() => getSectionMapConfig(selectedSectionId), [selectedSectionId]);
 
   const filteredFacilities = useMemo(() => {
     const filter = FEATURE_FILTERS.find((entry) => entry.id === activeFilter);
@@ -56,14 +72,19 @@ export default function VenueMap({ center, facilities, venueName }: VenueMapProp
     return facilities.filter((facility) => filterTypes.includes(facility.type));
   }, [activeFilter, facilities]);
 
+  const rankedFacilities = useMemo(
+    () => sortFacilitiesForMap(filteredFacilities, selectedSectionId, sensoryProfile),
+    [filteredFacilities, selectedSectionId, sensoryProfile]
+  );
+
   const facilitiesWithLocation = useMemo(
-    () => filteredFacilities.filter((facility) => facility.location),
-    [filteredFacilities]
+    () => rankedFacilities.filter((facility) => facility.location),
+    [rankedFacilities]
   );
 
   const selectedFacility = useMemo(
-    () => filteredFacilities.find((facility) => facility.id === selectedFacilityId) ?? filteredFacilities[0],
-    [filteredFacilities, selectedFacilityId]
+    () => rankedFacilities.find((facility) => facility.id === selectedFacilityId) ?? rankedFacilities[0],
+    [rankedFacilities, selectedFacilityId]
   );
 
   const pathStart = useMemo(
@@ -75,9 +96,27 @@ export default function VenueMap({ center, facilities, venueName }: VenueMapProp
   );
 
   useEffect(() => {
-    if (!selectedFacilityId || filteredFacilities.some((facility) => facility.id === selectedFacilityId)) return;
-    setSelectedFacilityId(filteredFacilities[0]?.id ?? null);
-  }, [filteredFacilities, selectedFacilityId]);
+    if (!selectedFacilityId || rankedFacilities.some((facility) => facility.id === selectedFacilityId)) return;
+    setSelectedFacilityId(rankedFacilities[0]?.id ?? null);
+  }, [rankedFacilities, selectedFacilityId]);
+
+  useEffect(() => {
+    const suggestedFilter = mapContext.suggestedFilterId as FeatureFilterId;
+    if (suggestedFilter && suggestedFilter !== activeFilter) {
+      setActiveFilter(suggestedFilter);
+      return;
+    }
+
+    const topMatch = sortFacilitiesForMap(
+      suggestedFilter === activeFilter ? facilities : filteredFacilities,
+      selectedSectionId,
+      sensoryProfile
+    )[0];
+
+    if (topMatch?.id && topMatch.id !== selectedFacilityId) {
+      setSelectedFacilityId(topMatch.id);
+    }
+  }, [activeFilter, facilities, filteredFacilities, mapContext.suggestedFilterId, selectedFacilityId, selectedSectionId, sensoryProfile]);
 
   useEffect(() => {
     // Dynamically import mapbox-gl to avoid SSR issues
@@ -94,7 +133,7 @@ export default function VenueMap({ center, facilities, venueName }: VenueMapProp
 
       map = new mapboxgl.Map({
         container: mapContainerRef.current,
-        style: "mapbox://styles/mapbox/light-v11",
+        style: "mapbox://styles/mapbox/streets-v12",
         center: [center.lng, center.lat],
         zoom: 16,
       });
@@ -143,7 +182,9 @@ export default function VenueMap({ center, facilities, venueName }: VenueMapProp
         .addTo(map);
 
       // Add facility markers (those with coordinates)
-      filteredFacilities
+      markerElementsRef.current = {};
+
+      rankedFacilities
         .filter((f) => f.location)
         .forEach((facility) => {
           const icon = FACILITY_ICONS[facility.type] ?? { emoji: "📍", color: "#374151" };
@@ -162,12 +203,14 @@ export default function VenueMap({ center, facilities, venueName }: VenueMapProp
             font-size: 14px;
             cursor: pointer;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
           `;
           el.textContent = icon.emoji;
           el.setAttribute("aria-label", facility.label);
           el.setAttribute("role", "button");
           el.setAttribute("tabindex", "0");
           el.addEventListener("click", () => setSelectedFacilityId(facility.id));
+          markerElementsRef.current[facility.id] = el;
 
           new mapboxgl.Marker({ element: el })
             .setLngLat([facility.location!.lng, facility.location!.lat])
@@ -192,7 +235,18 @@ export default function VenueMap({ center, facilities, venueName }: VenueMapProp
     return () => {
       map?.remove();
     };
-  }, [center.lat, center.lng, filteredFacilities, facilitiesWithLocation, venueName]);
+  }, [center.lat, center.lng, facilitiesWithLocation, rankedFacilities, venueName]);
+
+  useEffect(() => {
+    Object.entries(markerElementsRef.current).forEach(([facilityId, el]) => {
+      const selected = facilityId === selectedFacility?.id;
+      el.style.transform = selected ? "scale(1.15)" : "scale(1)";
+      el.style.background = selected ? "#ecfdf5" : "white";
+      el.style.boxShadow = selected
+        ? "0 0 0 4px rgba(63,138,67,0.18), 0 8px 18px rgba(15,23,42,0.18)"
+        : "0 2px 8px rgba(0,0,0,0.15)";
+    });
+  }, [selectedFacility]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -227,19 +281,32 @@ export default function VenueMap({ center, facilities, venueName }: VenueMapProp
   }, [pathStart.lat, pathStart.lng, selectedFacility]);
 
   // Facilities that don't have precise coordinates — list them below map
-  const listedFacilities = filteredFacilities.filter((f) => !f.location);
-  const routeDescription = selectedFacility
-    ? [
-        `Start at ${facilities.find((facility) => facility.type === "entrance")?.label ?? venueName}.`,
-        `Follow the highlighted path to ${selectedFacility.label}.`,
-        selectedFacility.floor ? `Look for it on ${selectedFacility.floor}.` : null,
-        selectedFacility.description ?? selectedFacility.notes ?? null,
-      ].filter(Boolean)
-    : [];
+  const listedFacilities = rankedFacilities.filter((f) => !f.location);
+  const routeSummary = buildRouteSummary(selectedFacility, venueName, sensoryProfile, selectedSectionId);
 
   return (
     <div>
       <div ref={mapContainerRef} className="mapbox-container" aria-label={`Map of ${venueName}`} />
+
+      <div className="mt-4 rounded-xl border border-sage-100 bg-sage-50/60 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-sage-500">Map focus</p>
+            <h4 className="text-sm font-semibold text-sage-900 mt-1">{mapContext.label}</h4>
+          </div>
+          <span className="rounded-full bg-white border border-sage-200 px-3 py-1 text-xs font-medium text-sage-700">
+            {routeSummary.emphasis}
+          </span>
+        </div>
+        <ol className="mt-3 space-y-1.5">
+          {routeSummary.steps.map((step, index) => (
+            <li key={`${mapContext.label}-${index}`} className="flex gap-2 text-sm text-sage-700">
+              <span className="mt-0.5 text-xs font-semibold text-sage-500">{index + 1}.</span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
         {FEATURE_FILTERS.map((filter) => {
@@ -278,9 +345,9 @@ export default function VenueMap({ center, facilities, venueName }: VenueMapProp
             </span>
           </div>
 
-          {routeDescription.length > 0 && (
+          {routeSummary.steps.length > 0 && (
             <ol className="mt-3 space-y-1.5">
-              {routeDescription.map((step, index) => (
+              {routeSummary.steps.map((step, index) => (
                 <li key={`${selectedFacility.id}-${index}`} className="flex gap-2 text-sm text-sage-700">
                   <span className="mt-0.5 text-xs font-semibold text-sage-500">{index + 1}.</span>
                   <span>{step}</span>
@@ -291,13 +358,13 @@ export default function VenueMap({ center, facilities, venueName }: VenueMapProp
         </div>
       )}
 
-      {filteredFacilities.length > 0 && (
+      {rankedFacilities.length > 0 && (
         <div className="mt-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-sage-500 mb-2">
             Tap a feature to see where it is
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {filteredFacilities.map((facility) => {
+            {rankedFacilities.map((facility, index) => {
               const icon = FACILITY_ICONS[facility.type] ?? { emoji: "📍", color: "#374151" };
               const selected = facility.id === selectedFacility?.id;
 
@@ -315,7 +382,14 @@ export default function VenueMap({ center, facilities, venueName }: VenueMapProp
                   <div className="flex items-start gap-3">
                     <span className="text-lg shrink-0">{icon.emoji}</span>
                     <div>
-                      <p className="text-sm font-medium text-sage-800">{facility.label}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-sage-800">{facility.label}</p>
+                        {index === 0 && (
+                          <span className="rounded-full bg-sage-100 px-2 py-0.5 text-[11px] font-medium text-sage-700">
+                            Best match for this section
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-sage-500 mt-0.5">
                         {facility.floor ?? "Location details below"}
                         {facility.location ? " · shown on map" : " · listed info only"}

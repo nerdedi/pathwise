@@ -63,6 +63,8 @@ function SectionCard({
   onUpdate,
   onRegenerate,
   regenerating,
+  onSelect,
+  mapLinked,
 }: {
   section: Itinerary["sections"][0];
   editable?: boolean;
@@ -73,13 +75,18 @@ function SectionCard({
   onUpdate?: (patch: Partial<Itinerary["sections"][0]>) => void;
   onRegenerate?: () => void;
   regenerating?: boolean;
+  onSelect?: () => void;
+  mapLinked?: boolean;
 }) {
   const [open, setOpen] = useState(!section.isExpandable);
 
   return (
     <Card>
       <button
-        onClick={() => section.isExpandable && setOpen((o) => !o)}
+        onClick={() => {
+          onSelect?.();
+          section.isExpandable && setOpen((o) => !o);
+        }}
         className="w-full text-left focus-calm"
         aria-expanded={open}
       >
@@ -88,6 +95,11 @@ function SectionCard({
             <span className="flex items-center gap-2">
               <span className="text-xl">{section.emoji}</span>
               {section.title}
+              {mapLinked && (
+                <span className="rounded-full bg-sage-100 px-2 py-0.5 text-[11px] font-medium text-sage-700">
+                  Showing on map
+                </span>
+              )}
             </span>
             {section.isExpandable &&
               (open ? (
@@ -205,6 +217,9 @@ export default function ItineraryView({
   const [shareEmail, setShareEmail] = useState("");
   const [shareRole, setShareRole] = useState<CollaborationRole>("viewer");
   const [privateNotesDraft, setPrivateNotesDraft] = useState(itinerary.privateNotes ?? "");
+  const [activeMapSectionId, setActiveMapSectionId] = useState<string | null>(
+    itinerary.sections[0]?.id ?? null
+  );
 
   const venue = draftItinerary.venueData;
   const collaborators = normalizeCollaborators(draftItinerary);
@@ -216,6 +231,7 @@ export default function ItineraryView({
   useEffect(() => {
     setDraftItinerary(itinerary);
     setPrivateNotesDraft(itinerary.privateNotes ?? "");
+    setActiveMapSectionId(itinerary.sections[0]?.id ?? null);
   }, [itinerary]);
 
   useEffect(() => {
@@ -553,6 +569,8 @@ export default function ItineraryView({
                 center={venue.location}
                 facilities={venue.facilities}
                 venueName={venue.name}
+                selectedSectionId={activeMapSectionId}
+                sensoryProfile={draftItinerary.sensoryProfile}
               />
             </CardContent>
           </Card>
@@ -578,6 +596,8 @@ export default function ItineraryView({
                 onToggleLock={(locked) => toggleSectionLock(section.id, locked)}
                 onUpdate={(patch) => updateSection(section.id, patch)}
                 onRegenerate={() => regenerateSection(section.id)}
+                onSelect={() => setActiveMapSectionId(section.id)}
+                mapLinked={activeMapSectionId === section.id}
                 regenerating={
                   allowEditing &&
                   regeneratingSectionId === section.id &&

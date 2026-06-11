@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { speakCalmText } from "@/lib/voice";
 import type { SensoryProfile } from "@/types/sensory-profile";
 import { AlertTriangle, Copy, Phone, Volume2 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -19,12 +20,8 @@ export default function SupportToolkit({ profile, showEmergencyContacts = true }
   }, [profile.supportCardMessage, profile.supportCardName]);
 
   const speak = () => {
-    if (typeof window === "undefined" || !window.speechSynthesis || !supportText) return;
-    const utterance = new SpeechSynthesisUtterance(supportText);
-    utterance.rate = 0.95;
-    utterance.pitch = 1;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+    if (!supportText) return;
+    speakCalmText(supportText, { lang: "en-AU", rate: 0.9, pitch: 0.9 });
   };
 
   const copyCard = async () => {

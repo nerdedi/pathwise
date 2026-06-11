@@ -14,6 +14,65 @@ export const SOCIAL_STORY_LANGUAGE_OPTIONS = [
 
 export const SOCIAL_STORY_STORAGE_PREFIX = "pathwise_social_story_custom_";
 
+const SOCIAL_STORY_VISUALS = [
+  {
+    matches: ["entrance", "arrive", "arrival", "door", "check in"],
+    icon: "🚪",
+    label: "Arrival",
+    cardClass: "from-sage-100 via-white to-sage-50",
+    accentClass: "bg-sage-600 text-white",
+  },
+  {
+    matches: ["walk", "route", "map", "way", "go", "path"],
+    icon: "🗺️",
+    label: "Wayfinding",
+    cardClass: "from-calm-100 via-white to-calm-50",
+    accentClass: "bg-calm-600 text-white",
+  },
+  {
+    matches: ["quiet", "calm", "break", "pause", "rest"],
+    icon: "🤫",
+    label: "Quiet space",
+    cardClass: "from-lavender-100 via-white to-lavender-50",
+    accentClass: "bg-lavender-600 text-white",
+  },
+  {
+    matches: ["eat", "drink", "cafe", "food", "water"],
+    icon: "☕",
+    label: "Food and drink",
+    cardClass: "from-warm-100 via-white to-warm-50",
+    accentClass: "bg-warm-500 text-white",
+  },
+  {
+    matches: ["help", "staff", "desk", "support", "ask"],
+    icon: "ℹ️",
+    label: "Help point",
+    cardClass: "from-sky-100 via-white to-cyan-50",
+    accentClass: "bg-sky-600 text-white",
+  },
+  {
+    matches: ["toilet", "bathroom", "restroom"],
+    icon: "🚻",
+    label: "Toilet",
+    cardClass: "from-blue-100 via-white to-blue-50",
+    accentClass: "bg-blue-600 text-white",
+  },
+  {
+    matches: ["lift", "stairs", "floor", "up", "down"],
+    icon: "🛗",
+    label: "Moving through the venue",
+    cardClass: "from-violet-100 via-white to-violet-50",
+    accentClass: "bg-violet-600 text-white",
+  },
+  {
+    matches: ["exit", "leave", "home", "overwhelmed", "safe"],
+    icon: "↗️",
+    label: "Exit plan",
+    cardClass: "from-rose-100 via-white to-rose-50",
+    accentClass: "bg-rose-600 text-white",
+  },
+] as const;
+
 const TRANSLATABLE_TEXT_FIELDS = ["title", "text", "speakText", "sensoryCue", "supportTip"] as const;
 
 function cleanText(value: string | undefined) {
@@ -106,6 +165,26 @@ export function getSocialStoryPanelContent(
     keywords: translation?.keywords?.length ? translation.keywords : (panel.keywords ?? []),
     hasTranslation: language === "en" || Boolean(translation?.title || translation?.text || translation?.speakText),
   };
+}
+
+export function getSocialStoryVisual(panel: SocialStoryPanel, language: SocialStoryLanguage) {
+  const content = getSocialStoryPanelContent(panel, language);
+  const haystack = [
+    content.title,
+    content.text,
+    panel.imagePrompt,
+    ...(content.keywords ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const visual =
+    SOCIAL_STORY_VISUALS.find((candidate) =>
+      candidate.matches.some((match) => haystack.includes(match))
+    ) ?? SOCIAL_STORY_VISUALS[1];
+
+  return visual;
 }
 
 export function moveSocialStoryPanel(

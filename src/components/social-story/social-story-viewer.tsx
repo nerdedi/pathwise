@@ -5,11 +5,17 @@ import {
     SOCIAL_STORY_LANGUAGE_OPTIONS,
     SOCIAL_STORY_STORAGE_PREFIX,
     getSocialStoryPanelContent,
+  getSocialStoryVisual,
     moveSocialStoryPanel,
     normalizeSocialStoryPanels,
     parseStoredSocialStory,
     updateSocialStoryPanelContent,
 } from "@/lib/social-story";
+import {
+  applyCalmingSpeechPreferences,
+  mapStoryLanguageToSpeechLang,
+  pickPreferredSpeechVoice,
+} from "@/lib/voice";
 import type { SocialStoryPanel } from "@/types/itinerary";
 import {
     ArrowDown,
@@ -74,6 +80,10 @@ export default function SocialStoryViewer({
   const [isEditing, setIsEditing] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<"en" | "es" | "ar" | "zh">("en");
   const [storyPanels, setStoryPanels] = useState<SocialStoryPanel[]>(() => normalizeSocialStoryPanels(panels));
+  const speechLanguage = useMemo(
+    () => mapStoryLanguageToSpeechLang(selectedLanguage),
+    [selectedLanguage]
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -98,9 +108,16 @@ export default function SocialStoryViewer({
     () =>
       voices
         .filter((voice, index, arr) => arr.findIndex((item) => item.name === voice.name) === index)
+        .filter((voice) =>
+          selectedLanguage === "en"
+            ? voice.lang.toLowerCase().startsWith("en")
+            : voice.lang.toLowerCase().startsWith(selectedLanguage)
+        )
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [voices]
+    [selectedLanguage, voices]
   );
+
+  const voiceOptions = languageVoices.length > 0 ? languageVoices : voices;
 
   const availableLanguages = useMemo(() => {
     const available = new Set(["en"]);
@@ -123,8 +140,12 @@ export default function SocialStoryViewer({
     const loadVoices = () => {
       const available = window.speechSynthesis.getVoices();
       setVoices(available);
-      if (!selectedVoice && available[0]) {
-        setSelectedVoice(available[0].name);
+      const preferredVoice = pickPreferredSpeechVoice(available, {
+        lang: speechLanguage,
+        selectedVoiceName: selectedVoice,
+      });
+      if (preferredVoice && preferredVoice.name !== selectedVoice) {
+        setSelectedVoice(preferredVoice.name);
       }
     };
 
@@ -135,7 +156,7 @@ export default function SocialStoryViewer({
       window.speechSynthesis.cancel();
       window.speechSynthesis.onvoiceschanged = null;
     };
-  }, [selectedVoice]);
+  }, [selectedVoice, speechLanguage]);
 
   const speak = (text: string, onEnd?: () => void) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window) || !text.trim()) {
@@ -143,13 +164,16 @@ export default function SocialStoryViewer({
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = speechRate;
-    const voice = languageVoices.find((item) => item.name === selectedVoice);
-    if (voice) {
-      utterance.voice = voice;
-      utterance.lang = voice.lang;
-    }
+    const utterance = applyCalmingSpeechPreferences(
+      new SpeechSynthesisUtterance(text),
+      {
+        voices: voiceOptions,
+        selectedVoiceName: selectedVoice,
+        lang: speechLanguage,
+        rate: speechRate,
+        pitch: 0.9,
+      }
+    );
     utterance.onend = () => onEnd?.();
     utterance.onerror = () => onEnd?.();
 
@@ -374,6 +398,7 @@ export default function SocialStoryViewer({
             <div className="space-y-4">
               {(() => {
                 const activeContent = getSocialStoryPanelContent(activePanel, selectedLanguage);
+                const visual = getSocialStoryVisual(activePanel, selectedLanguage);
                 return (
               <div className="rounded-2xl border-2 p-6 bg-white border-lavender-200 shadow-sm">
                 <div className="flex items-center justify-between mb-3">
@@ -394,9 +419,13 @@ export default function SocialStoryViewer({
                     className="w-full aspect-video object-cover rounded-xl mb-4 bg-sage-100"
                   />
                 ) : (
-                  <div className="w-full aspect-video rounded-xl mb-4 bg-lavender-50 border border-lavender-100 flex items-center justify-center">
-                    <p className="text-sm text-center text-sage-500 px-6 italic">
-                      {activePanel.imagePrompt ?? "Illustration"}
+                  <div className={`w-full aspect-video rounded-xl mb-4 border border-lavender-100 bg-gradient-to-br ${visual.cardClass} flex flex-col items-center justify-center px-6 text-center`}>
+                    <div className={`mb-3 flex h-16 w-16 items-center justify-center rounded-2xl text-3xl shadow-sm ${visual.accentClass}`}>
+                      {visual.icon}
+                    </div>
+                    <p className="text-sm font-semibold text-sage-800">{visual.label}</p>
+                    <p className="text-xs text-sage-600 mt-2 max-w-xs">
+                      {activePanel.imagePrompt ?? "Calm visual cue for this step."}
                     </p>
                   </div>
                 )}
@@ -476,6 +505,7 @@ export default function SocialStoryViewer({
               const colorClass = EMOTION_COLORS[emotionKey];
               const emoji = EMOTION_EMOJIS[emotionKey];
               const localized = getSocialStoryPanelContent(panel, selectedLanguage);
+              const visual = getSocialStoryVisual(panel, selectedLanguage);
 
               return (
                 <div
@@ -525,9 +555,13 @@ export default function SocialStoryViewer({
                       className="w-full aspect-video object-cover rounded-xl mb-3 bg-sage-100"
                     />
                   ) : (
-                    <div className="w-full aspect-video rounded-xl mb-3 bg-white/60 border border-current/10 flex items-center justify-center">
-                      <p className="text-xs text-center text-sage-400 px-4 italic">
-                        {panel.imagePrompt ?? "Illustration"}
+                    <div className={`w-full aspect-video rounded-xl mb-3 border border-current/10 bg-gradient-to-br ${visual.cardClass} flex flex-col items-center justify-center px-4 text-center`}>
+                      <div className={`mb-2 flex h-12 w-12 items-center justify-center rounded-2xl text-2xl shadow-sm ${visual.accentClass}`}>
+                        {visual.icon}
+                      </div>
+                      <p className="text-xs font-semibold text-sage-700">{visual.label}</p>
+                      <p className="text-[11px] text-sage-500 mt-1 italic">
+                        {panel.imagePrompt ?? "Calm visual cue"}
                       </p>
                     </div>
                   )}

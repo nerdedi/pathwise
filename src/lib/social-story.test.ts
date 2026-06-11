@@ -1,6 +1,7 @@
 import type { SocialStoryPanel } from "@/types/itinerary";
 import { describe, expect, it } from "vitest";
 import {
+  getSocialStoryVisual,
     getSocialStoryPanelContent,
     moveSocialStoryPanel,
     normalizeSocialStoryPanels,
@@ -84,5 +85,12 @@ describe("social story helpers", () => {
     const stored = JSON.stringify(basePanels);
     expect(parseStoredSocialStory(stored)?.length).toBe(2);
     expect(parseStoredSocialStory("not-json")).toBeNull();
+  });
+
+  it("derives a universal visual cue for a panel", () => {
+    const visual = getSocialStoryVisual(basePanels[0], "en");
+
+    expect(visual.icon).toBe("🚪");
+    expect(visual.label).toBe("Arrival");
   });
 });

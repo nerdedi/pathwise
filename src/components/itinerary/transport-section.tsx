@@ -9,6 +9,7 @@ import {
     buildTripOptimisationTips,
     type TransportTripMemory,
 } from "@/lib/transport-support";
+  import { speakCalmText } from "@/lib/voice";
 import { formatTime, minutesToDuration } from "@/lib/utils";
 import type { TransportPlan } from "@/types/itinerary";
 import type { EmergencyContact } from "@/types/sensory-profile";
@@ -154,14 +155,11 @@ export default function TransportSection({
   }, [memoryStorageKey, photoStorageKey]);
 
   const speak = (message: string) => {
-    if (!voiceEnabled || typeof window === "undefined" || !("speechSynthesis" in window)) {
+    if (!voiceEnabled) {
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(message);
-    utterance.rate = 0.95;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+    speakCalmText(message, { lang: "en-AU", rate: 0.9, pitch: 0.9 });
   };
 
   const toggleLiveLocation = () => {
