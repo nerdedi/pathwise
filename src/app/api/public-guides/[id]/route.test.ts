@@ -1,9 +1,14 @@
+import { logError } from "@/lib/logger";
 import { createClient } from "@/lib/supabase/server";
 import type { Itinerary } from "@/types/itinerary";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
+}));
+
+vi.mock("@/lib/logger", () => ({
+  logError: vi.fn(),
 }));
 
 import { GET } from "./route";
@@ -118,5 +123,26 @@ describe("public guide route", () => {
     });
 
     expect(response.status).toBe(404);
+  });
+
+  it("returns 500 when the public guide query fails", async () => {
+    const dbError = new Error("db unavailable");
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: dbError });
+    const query = {
+      select: vi.fn(() => query),
+      eq: vi.fn(() => query),
+      maybeSingle,
+    };
+
+    vi.mocked(createClient).mockResolvedValue({
+      from: vi.fn(() => query),
+    } as never);
+
+    const response = await GET(new Request("http://localhost") as never, {
+      params: Promise.resolve({ id: "guide-err" }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(vi.mocked(logError)).toHaveBeenCalledWith("/api/public-guides/:id GET", dbError);
   });
 });

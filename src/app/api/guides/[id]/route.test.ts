@@ -11,7 +11,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: vi.fn(),
 }));
 
-import { GET, PUT } from "./route";
+import { DELETE, GET, PUT } from "./route";
 
 const makeItinerary = (overrides: Partial<Itinerary> = {}): Itinerary => ({
   id: "5b1d4db2-1d1b-4f06-bd23-9d4d0f7f9e11",
@@ -93,6 +93,19 @@ beforeEach(() => {
 });
 
 describe("guide detail route", () => {
+  it("returns 401 when loading a guide without authentication", async () => {
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null } }) },
+      from: vi.fn(),
+    } as never);
+
+    const response = await GET(new Request("http://localhost") as never, {
+      params: Promise.resolve({ id: "guide-123" }),
+    });
+
+    expect(response.status).toBe(401);
+  });
+
   it("returns owner permissions for the signed-in owner", async () => {
     const ownerItinerary = makeItinerary();
     const maybeSingle = vi.fn().mockResolvedValue({
@@ -165,6 +178,112 @@ describe("guide detail route", () => {
     expect(payload.itinerary.lockedSectionIds).toEqual(["intro"]);
   });
 
+  it("returns 404 when no owner or shared guide access exists", async () => {
+    const ownerQuery = {
+      select: vi.fn(() => ownerQuery),
+      eq: vi.fn(() => ownerQuery),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    };
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "owner@example.com" } } }) },
+      from: vi.fn(() => ownerQuery),
+    } as never);
+
+    vi.mocked(createAdminClient).mockReturnValue(null as never);
+
+    const response = await GET(new Request("http://localhost") as never, {
+      params: Promise.resolve({ id: "guide-123" }),
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 400 when request itinerary id mismatches route id", async () => {
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "owner@example.com" } } }) },
+      from: vi.fn(),
+    } as never);
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itinerary: {
+            ...makeItinerary(),
+            id: "11111111-1111-4111-8111-111111111111",
+          },
+        }),
+      }) as never,
+      {
+        params: Promise.resolve({ id: "22222222-2222-4222-8222-222222222222" }),
+      }
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("allows editor collaborators to save unlocked sections via admin path", async () => {
+    const sharedItinerary = makeItinerary({
+      sharedWith: [{ email: "editor@example.com", role: "editor" }],
+      sharedWithEmails: ["editor@example.com"],
+    });
+
+    const ownerUpdate = {
+      update: vi.fn(() => ownerUpdate),
+      eq: vi.fn(() => ownerUpdate),
+      select: vi.fn().mockResolvedValue({ data: [], error: null }),
+    };
+
+    const adminSelectQuery = {
+      select: vi.fn(() => adminSelectQuery),
+      eq: vi.fn(() => adminSelectQuery),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { itinerary_json: sharedItinerary },
+        error: null,
+      }),
+    };
+
+    const adminUpdateQuery = {
+      update: vi.fn(() => adminUpdateQuery),
+      eq: vi.fn(() => adminUpdateQuery),
+    };
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "editor@example.com" } } }) },
+      from: vi.fn(() => ownerUpdate),
+    } as never);
+
+    vi.mocked(createAdminClient).mockReturnValue({
+      from: vi.fn(() => ({
+        ...adminSelectQuery,
+        ...adminUpdateQuery,
+      })),
+    } as never);
+
+    const edited = {
+      ...sharedItinerary,
+      sections: sharedItinerary.sections.map((section) =>
+        section.id === "arrival" ? { ...section, content: "Updated by editor" } : section
+      ),
+    };
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary: edited }),
+      }) as never,
+      {
+        params: Promise.resolve({ id: sharedItinerary.id }),
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(ownerUpdate.select).toHaveBeenCalled();
+  });
+
   it("blocks viewers from saving guide edits", async () => {
     const sharedItinerary = makeItinerary();
     const ownerUpdate = {
@@ -220,5 +339,62 @@ describe("guide detail route", () => {
     expect(response.status).toBe(403);
     expect(ownerUpdate.update).toHaveBeenCalled();
     expect(adminQuery.maybeSingle).toHaveBeenCalled();
+  });
+
+  it("returns 401 when deleting without authentication", async () => {
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null } }) },
+      from: vi.fn(),
+    } as never);
+
+    const response = await DELETE(new Request("http://localhost") as never, {
+      params: Promise.resolve({ id: "guide-123" }),
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("deletes guide for authenticated owner", async () => {
+    const deleteQuery = {
+      delete: vi.fn(() => deleteQuery),
+      eq: vi.fn(() => deleteQuery),
+    };
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "owner@example.com" } } }) },
+      from: vi.fn(() => ({
+        ...deleteQuery,
+        error: null,
+      })),
+    } as never);
+
+    const response = await DELETE(new Request("http://localhost") as never, {
+      params: Promise.resolve({ id: "guide-123" }),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it("returns 500 when delete query fails", async () => {
+    const deleteStepTwo = {
+      eq: vi.fn().mockResolvedValue({ error: new Error("db failure") }),
+    };
+    const deleteStepOne = {
+      eq: vi.fn(() => deleteStepTwo),
+    };
+    const deleteQuery = {
+      delete: vi.fn(() => deleteStepOne),
+    };
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "owner@example.com" } } }) },
+      from: vi.fn(() => deleteQuery),
+    } as never);
+
+    const response = await DELETE(new Request("http://localhost") as never, {
+      params: Promise.resolve({ id: "guide-123" }),
+    });
+
+    expect(response.status).toBe(500);
   });
 });
