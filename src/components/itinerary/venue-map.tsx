@@ -48,6 +48,10 @@ const FEATURE_FILTERS: Array<{ id: string; label: string; types: FacilityType[] 
 ] as const;
 
 type FeatureFilterId = (typeof FEATURE_FILTERS)[number]["id"];
+type MappedFacility = Facility & {
+  mapLocation: VenueLocation;
+  isApproximateLocation: boolean;
+};
 
 export default function VenueMap({
   center,
@@ -58,6 +62,7 @@ export default function VenueMap({
 }: VenueMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markerRefs = useRef<mapboxgl.Marker[]>([]);
   const markerElementsRef = useRef<Record<string, HTMLDivElement>>({});
   const [activeFilter, setActiveFilter] = useState<FeatureFilterId>("all");
   const [selectedFacilityId, setSelectedFacilityId] = useState<string | null>(
@@ -77,9 +82,40 @@ export default function VenueMap({
     [filteredFacilities, selectedSectionId, sensoryProfile]
   );
 
+  const mappedFacilities = useMemo<MappedFacility[]>(() => {
+    const baseLat = center.lat;
+    const baseLng = center.lng;
+    const cosLat = Math.max(Math.cos((baseLat * Math.PI) / 180), 0.2);
+
+    return rankedFacilities.map((facility, index) => {
+      if (facility.location) {
+        return {
+          ...facility,
+          mapLocation: facility.location,
+          isApproximateLocation: false,
+        };
+      }
+
+      const ring = Math.floor(index / 8) + 1;
+      const angle = ((index % 8) / 8) * Math.PI * 2;
+      const metres = 20 + ring * 14;
+      const latOffset = (metres / 111_320) * Math.cos(angle);
+      const lngOffset = (metres / (111_320 * cosLat)) * Math.sin(angle);
+
+      return {
+        ...facility,
+        mapLocation: {
+          lat: baseLat + latOffset,
+          lng: baseLng + lngOffset,
+        },
+        isApproximateLocation: true,
+      };
+    });
+  }, [center.lat, center.lng, rankedFacilities]);
+
   const facilitiesWithLocation = useMemo(
-    () => rankedFacilities.filter((facility) => facility.location),
-    [rankedFacilities]
+    () => mappedFacilities,
+    [mappedFacilities]
   );
 
   const selectedFacility = useMemo(
@@ -87,12 +123,18 @@ export default function VenueMap({
     [rankedFacilities, selectedFacilityId]
   );
 
+  const selectedMappedFacility = useMemo(
+    () => mappedFacilities.find((facility) => facility.id === selectedFacility?.id) ?? mappedFacilities[0],
+    [mappedFacilities, selectedFacility?.id]
+  );
+
   const pathStart = useMemo(
     () =>
+      mappedFacilities.find((facility) => facility.type === "entrance")?.mapLocation ??
       facilities.find((facility) => facility.type === "entrance" && facility.location)?.location ??
-      facilitiesWithLocation[0]?.location ??
+      facilitiesWithLocation[0]?.mapLocation ??
       center,
-    [center, facilities, facilitiesWithLocation]
+    [center, facilities, facilitiesWithLocation, mappedFacilities]
   );
 
   useEffect(() => {
@@ -109,30 +151,48 @@ export default function VenueMap({
 
   useEffect(() => {
     // Dynamically import mapbox-gl to avoid SSR issues
-    let map: mapboxgl.Map;
+    let cancelled = false;
 
     async function initMap() {
       const mapboxgl = (await import("mapbox-gl")).default;
       await import("mapbox-gl/dist/mapbox-gl.css");
 
       const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-      if (!token || !mapContainerRef.current) return;
+      const container = mapContainerRef.current;
+      if (!token || !container || cancelled) return;
+
+      markerRefs.current.forEach((marker) => marker.remove());
+      markerRefs.current = [];
+
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+
+      container.innerHTML = "";
 
       mapboxgl.accessToken = token;
 
-      map = new mapboxgl.Map({
-        container: mapContainerRef.current,
+      const map = new mapboxgl.Map({
+        container,
         style: "mapbox://styles/mapbox/streets-v12",
         center: [center.lng, center.lat],
         zoom: 16,
       });
 
+      if (cancelled) {
+        map.remove();
+        return;
+      }
+
       mapRef.current = map;
 
       map.on("load", () => {
+        if (cancelled) return;
+
         const bounds = new mapboxgl.LngLatBounds([center.lng, center.lat], [center.lng, center.lat]);
         facilitiesWithLocation.forEach((facility) => {
-          bounds.extend([facility.location!.lng, facility.location!.lat]);
+          bounds.extend([facility.mapLocation.lng, facility.mapLocation.lat]);
         });
 
         if (!bounds.isEmpty()) {
@@ -173,9 +233,7 @@ export default function VenueMap({
       // Add facility markers (those with coordinates)
       markerElementsRef.current = {};
 
-      rankedFacilities
-        .filter((f) => f.location)
-        .forEach((facility) => {
+      mappedFacilities.forEach((facility) => {
           const icon = FACILITY_ICONS[facility.type] ?? { emoji: "📍", color: "#374151" };
 
           const el = document.createElement("div");
@@ -201,14 +259,16 @@ export default function VenueMap({
           el.addEventListener("click", () => setSelectedFacilityId(facility.id));
           markerElementsRef.current[facility.id] = el;
 
-          new mapboxgl.Marker({ element: el })
-            .setLngLat([facility.location!.lng, facility.location!.lat])
+          const marker = new mapboxgl.Marker({ element: el })
+            .setLngLat([facility.mapLocation.lng, facility.mapLocation.lat])
             .setPopup(
               new mapboxgl.Popup({ offset: 20 }).setHTML(
-                `<strong>${facility.label}</strong>${facility.description ? `<br/><span style="font-size:12px">${facility.description}</span>` : ""}${facility.floor ? `<br/><span style="font-size:11px;color:#666">Floor: ${facility.floor}</span>` : ""}`
+                `<strong>${facility.label}</strong>${facility.description ? `<br/><span style="font-size:12px">${facility.description}</span>` : ""}${facility.floor ? `<br/><span style="font-size:11px;color:#666">Floor: ${facility.floor}</span>` : ""}${facility.isApproximateLocation ? `<br/><span style="font-size:11px;color:#666">Approximate map position</span>` : ""}`
               )
             )
             .addTo(map);
+
+          markerRefs.current.push(marker);
         });
 
       // Navigation controls
@@ -222,9 +282,20 @@ export default function VenueMap({
     initMap();
 
     return () => {
-      map?.remove();
+      cancelled = true;
+      markerRefs.current.forEach((marker) => marker.remove());
+      markerRefs.current = [];
+
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+
+      if (mapContainerRef.current) {
+        mapContainerRef.current.innerHTML = "";
+      }
     };
-  }, [center.lat, center.lng, facilitiesWithLocation, rankedFacilities, venueName]);
+  }, [center.lat, center.lng, facilitiesWithLocation, mappedFacilities, venueName]);
 
   useEffect(() => {
     Object.entries(markerElementsRef.current).forEach(([facilityId, el]) => {
@@ -239,7 +310,7 @@ export default function VenueMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    const target = selectedFacility?.location;
+    const target = selectedMappedFacility?.mapLocation;
     if (!map || !target) return;
 
     const source = map.getSource("selected-path") as mapboxgl.GeoJSONSource | undefined;
@@ -267,10 +338,10 @@ export default function VenueMap({
       duration: 500,
       zoom: Math.max(map.getZoom(), 16.5),
     });
-  }, [pathStart.lat, pathStart.lng, selectedFacility]);
+  }, [pathStart.lat, pathStart.lng, selectedMappedFacility]);
 
   // Facilities that don't have precise coordinates — list them below map
-  const listedFacilities = rankedFacilities.filter((f) => !f.location);
+  const listedFacilities = mappedFacilities.filter((f) => f.isApproximateLocation);
   const routeSummary = buildRouteSummary(selectedFacility, venueName, sensoryProfile, selectedSectionId);
 
   return (
@@ -356,6 +427,7 @@ export default function VenueMap({
             {rankedFacilities.map((facility, index) => {
               const icon = FACILITY_ICONS[facility.type] ?? { emoji: "📍", color: "#374151" };
               const selected = facility.id === selectedFacility?.id;
+              const mapped = mappedFacilities.find((entry) => entry.id === facility.id);
 
               return (
                 <button
@@ -381,7 +453,7 @@ export default function VenueMap({
                       </div>
                       <p className="text-xs text-sage-500 mt-0.5">
                         {facility.floor ?? "Location details below"}
-                        {facility.location ? " · shown on map" : " · listed info only"}
+                        {mapped?.isApproximateLocation ? " · approximate map marker" : " · shown on map"}
                       </p>
                       {(facility.description || facility.notes) && (
                         <p className="text-xs text-sage-500 mt-1">{facility.description ?? facility.notes}</p>

@@ -12,6 +12,64 @@ export interface FirecrawlResult {
   };
 }
 
+const LINK_KEYWORDS = [
+  "visit",
+  "plan",
+  "access",
+  "accessibility",
+  "map",
+  "floor",
+  "guide",
+  "menu",
+  "food",
+  "dining",
+  "cafe",
+  "transport",
+  "parking",
+  "drop-off",
+  "dropoff",
+  "getting-here",
+  "contact",
+  "faq",
+  "alerts",
+  "updates",
+  "news",
+  "events",
+];
+
+function normalizeUrl(baseUrl: string, maybeRelative: string) {
+  try {
+    return new URL(maybeRelative, baseUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+function extractCandidateLinks(markdown: string, baseUrl: string) {
+  const origin = new URL(baseUrl).origin;
+  const links = new Set<string>();
+  const markdownLinkPattern = /\[[^\]]+\]\(([^)]+)\)/g;
+
+  for (const match of markdown.matchAll(markdownLinkPattern)) {
+    const raw = match[1]?.trim();
+    if (!raw || raw.startsWith("mailto:") || raw.startsWith("tel:")) continue;
+    const absolute = normalizeUrl(baseUrl, raw);
+    if (!absolute || !absolute.startsWith(origin)) continue;
+    links.add(absolute);
+  }
+
+  const filtered = Array.from(links).filter((link) => {
+    const lower = link.toLowerCase();
+    return LINK_KEYWORDS.some((keyword) => lower.includes(keyword));
+  });
+
+  return filtered.sort((a, b) => {
+    const score = (value: string) =>
+      LINK_KEYWORDS.reduce((total, keyword) => total + (value.includes(keyword) ? 1 : 0), 0);
+    return score(b.toLowerCase()) - score(a.toLowerCase());
+  });
+}
+
 export async function scrapeVenueUrl(url: string): Promise<FirecrawlResult> {
   const apiKey = process.env.FIRECRAWL_API_KEY;
   if (!apiKey) {
@@ -63,15 +121,25 @@ export async function crawlVenueSite(
     "/contact",
     "/cafe",
     "/food-and-drink",
+    "/menu",
+    "/menus",
+    "/map",
+    "/maps",
+    "/floor-plan",
+    "/access-guide",
+    "/alerts",
+    "/service-updates",
     "/parking",
     "/transport",
-  ].slice(0, maxPages - 1);
+  ];
 
-  // Scrape homepage + sub-paths in parallel (cap at maxPages)
-  const urls = [url, ...subPaths.map((p) => baseUrl + p)];
+  const homepage = await scrapeVenueUrl(url);
+  const discoveredLinks = extractCandidateLinks(homepage.markdown, url);
+  const seededUrls = [url, ...subPaths.map((p) => baseUrl + p), ...discoveredLinks];
+  const urls = Array.from(new Set(seededUrls)).slice(0, Math.max(maxPages, 8));
 
   const results = await Promise.allSettled(
-    urls.slice(0, maxPages).map((u) => scrapeVenueUrl(u))
+    urls.map((u) => scrapeVenueUrl(u))
   );
 
   const pages: FirecrawlResult[] = [];

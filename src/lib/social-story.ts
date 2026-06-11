@@ -1,4 +1,5 @@
 import type {
+    ItinerarySection,
     SocialStoryLanguage,
     SocialStoryPanel,
     SocialStoryTranslation,
@@ -262,4 +263,73 @@ export function parseStoredSocialStory(value: string | null) {
   } catch {
     return null;
   }
+}
+
+export function buildFallbackSocialStoryPanels({
+  venueName,
+  sections,
+  quietTimes,
+  selfCareReminders,
+}: {
+  venueName: string;
+  sections: ItinerarySection[];
+  quietTimes?: string;
+  selfCareReminders?: string[];
+}): SocialStoryPanel[] {
+  const topSections = sections.slice(0, 6);
+
+  const sectionPanels = topSections.map((section, index) => {
+    const firstDetail = section.details?.[0];
+    const supportTip = firstDetail ?? "I can take a pause and check my next step.";
+
+    return {
+      sequence: index + 2,
+      title: section.title,
+      text: section.content || "I can follow this step slowly and ask for help if I need it.",
+      imagePrompt: `Calm, inclusive illustration of ${section.title.toLowerCase()} at ${venueName}`,
+      emotion: "calm" as const,
+      sensoryCue: section.id === "if-overwhelmed" ? "It is okay to pause when things feel intense." : undefined,
+      supportTip,
+      speakText: `${section.title}. ${section.content || "I can go at my own pace."}`,
+      keywords: [section.title, section.emoji, "step"].filter(Boolean),
+    };
+  });
+
+  const reminder = selfCareReminders?.[0] ?? "I can breathe slowly and choose one small next step.";
+
+  return normalizeSocialStoryPanels([
+    {
+      sequence: 1,
+      title: `Getting ready for ${venueName}`,
+      text: "I can get ready at my own pace. I can use this story to know what to expect.",
+      imagePrompt: `Warm and calm preparation scene for visiting ${venueName}`,
+      emotion: "curious",
+      sensoryCue: quietTimes ? `A calmer time can be: ${quietTimes}.` : undefined,
+      supportTip: "I can pack comfort items before I leave.",
+      speakText: `I am getting ready for ${venueName}. I can take this one step at a time.`,
+      keywords: ["ready", "calm", "plan"],
+    },
+    ...sectionPanels,
+    {
+      sequence: sectionPanels.length + 2,
+      title: "If I feel overwhelmed",
+      text: "I can pause, move to a quieter place, and ask for support. I am allowed to take breaks.",
+      imagePrompt: "Gentle visual of a person taking a calm break in a quiet area",
+      emotion: "uncertain",
+      sensoryCue: "Strong noise, light, or crowds can feel hard. That is okay.",
+      supportTip: reminder,
+      speakText: "If I feel overwhelmed, I can pause, breathe, and use my support plan.",
+      keywords: ["pause", "quiet", "support"],
+    },
+    {
+      sequence: sectionPanels.length + 3,
+      title: "I did something brave",
+      text: "I can feel proud of preparing for this visit. Every small step counts.",
+      imagePrompt: "Positive, inclusive celebration moment after completing a visit",
+      emotion: "proud",
+      supportTip: "I can reflect on what helped and save it for next time.",
+      speakText: "I did something brave today. Every small step counts.",
+      keywords: ["proud", "finished", "next time"],
+    },
+  ]);
 }

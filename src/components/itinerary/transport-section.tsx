@@ -247,6 +247,41 @@ export default function TransportSection({
     return ["Take 3 slow breaths", "Look for a quieter area", "Message a trusted contact"];
   }, [copingStrategies, groundingTechniques]);
 
+  const journeyEffort = useMemo(() => {
+    const totalWalkMinutes = plan.legs
+      .filter((leg) => leg.mode === "walk")
+      .reduce((sum, leg) => sum + leg.durationMinutes, 0);
+
+    const weightedLoad =
+      plan.totalDurationMinutes +
+      Math.round(plan.totalApproximateSteps / 120) +
+      totalWalkMinutes * 1.6 +
+      (plan.stressScore ?? 0) * 5;
+
+    if (weightedLoad <= 90) {
+      return {
+        label: "Gentle effort",
+        fitness: "Suitable for most energy levels",
+        breakSuggestion: "Plan one short reset break if you want one.",
+      };
+    }
+
+    if (weightedLoad <= 150) {
+      return {
+        label: "Moderate effort",
+        fitness: "Some steady walking and pacing helpful",
+        breakSuggestion: "Plan a 5–10 minute reset break around halfway.",
+      };
+    }
+
+    return {
+      label: "Higher effort",
+      fitness: "Higher physical and emotional load expected",
+      breakSuggestion:
+        "Plan regular reset breaks every 20–30 minutes, with a quieter checkpoint before the final leg.",
+    };
+  }, [plan.legs, plan.stressScore, plan.totalApproximateSteps, plan.totalDurationMinutes]);
+
   return (
     <Card>
       <CardHeader>
@@ -546,6 +581,9 @@ export default function TransportSection({
               🌿 Stress score {plan.stressScore}/10
             </div>
           )}
+          <div className="flex items-center gap-1.5 text-sm text-sky-700 bg-sky-50 rounded-lg px-3 py-1.5">
+            ⚡ {journeyEffort.label}
+          </div>
         </div>
 
         {plan.journeyReminder && (
@@ -553,6 +591,12 @@ export default function TransportSection({
             {plan.journeyReminder}
           </div>
         )}
+
+        <div className="mb-4 rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-sky-700 mb-1">Energy and pacing</p>
+          <p className="text-xs text-sage-700">{journeyEffort.fitness}</p>
+          <p className="text-xs text-sage-700 mt-1">{journeyEffort.breakSuggestion}</p>
+        </div>
 
         <div className="space-y-0">
           {plan.legs.map((leg, i) => {

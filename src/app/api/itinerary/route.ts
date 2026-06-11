@@ -1,6 +1,7 @@
 import { generateJson } from "@/lib/gemini";
 import { AiItinerarySchema } from "@/lib/itinerary-ai";
 import { logError, logWarn } from "@/lib/logger";
+import { buildFallbackSocialStoryPanels } from "@/lib/social-story";
 import { buildItineraryPrompt } from "@/lib/prompts";
 import { getTripPlan } from "@/lib/transport-nsw";
 import { getWeatherForecast, getWeatherPackingTips } from "@/lib/weather";
@@ -140,6 +141,18 @@ Do NOT wrap the output in any outer key like "itinerary". Return the flat object
           riskDetails: {},
         };
 
+    const fallbackSocialStory = buildFallbackSocialStoryPanels({
+      venueName: venue.name,
+      sections: normalizedAiData.sections,
+      quietTimes: venue.quietTimes,
+      selfCareReminders: normalizedAiData.crisisPlan.selfCareReminders,
+    });
+
+    const socialStory =
+      normalizedAiData.socialStory.length > 0
+        ? normalizedAiData.socialStory
+        : fallbackSocialStory;
+
     // Assemble final itinerary
     const itinerary = {
       id: crypto.randomUUID(),
@@ -155,6 +168,7 @@ Do NOT wrap the output in any outer key like "itinerary". Return the flat object
       generatedAt: new Date().toISOString(),
       sharedWithEmails: [],
       ...normalizedAiData,
+      socialStory,
     };
 
     return NextResponse.json({ itinerary });

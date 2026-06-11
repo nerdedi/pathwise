@@ -1,6 +1,7 @@
 "use client";
 
 import SocialStoryViewer from "@/components/social-story/social-story-viewer";
+import { buildFallbackSocialStoryPanels } from "@/lib/social-story";
 import type { Itinerary } from "@/types/itinerary";
 import { Loader2 } from "lucide-react";
 import { useParams } from "next/navigation";
@@ -11,6 +12,20 @@ export default function SocialStoryPage() {
   const [itinerary, setItinerary] = useState<Itinerary | null>(null);
   const [error, setError] = useState("");
 
+  const withSocialStoryFallback = (value: Itinerary): Itinerary => {
+    if (value.socialStory?.length) return value;
+
+    return {
+      ...value,
+      socialStory: buildFallbackSocialStoryPanels({
+        venueName: value.venueData.name,
+        sections: value.sections,
+        quietTimes: value.venueData.quietTimes,
+        selfCareReminders: value.crisisPlan.selfCareReminders,
+      }),
+    };
+  };
+
   useEffect(() => {
     if (!params.id) return;
 
@@ -18,17 +33,32 @@ export default function SocialStoryPage() {
       try {
         const stored = sessionStorage.getItem(`pathwise_itinerary_${params.id}`);
         if (stored) {
-          setItinerary(JSON.parse(stored) as Itinerary);
+          setItinerary(withSocialStoryFallback(JSON.parse(stored) as Itinerary));
           return;
         }
 
         const res = await fetch(`/api/guides/${params.id}`, { cache: "no-store" });
         if (res.ok) {
           const data = await res.json();
-          setItinerary(data.itinerary as Itinerary);
+          const next = withSocialStoryFallback(data.itinerary as Itinerary);
+          setItinerary(next);
           sessionStorage.setItem(
             `pathwise_itinerary_${params.id}`,
-            JSON.stringify(data.itinerary)
+            JSON.stringify(next)
+          );
+          return;
+        }
+
+        const publicRes = await fetch(`/api/public-guides/${params.id}`, {
+          cache: "no-store",
+        });
+        if (publicRes.ok) {
+          const data = await publicRes.json();
+          const next = withSocialStoryFallback(data.itinerary as Itinerary);
+          setItinerary(next);
+          sessionStorage.setItem(
+            `pathwise_itinerary_${params.id}`,
+            JSON.stringify(next)
           );
           return;
         }
