@@ -392,6 +392,69 @@ describe("community route", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 500 when report insert fails with non-duplicate error", async () => {
+    const loadQuery = {
+      select: vi.fn(() => loadQuery),
+      eq: vi.fn(() => loadQuery),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: "row-1", user_id: "owner-1", helpful_count: 2, report_count: 0 },
+        error: null,
+      }),
+    };
+
+    const reportInsert = vi.fn().mockResolvedValue({
+      error: { code: "23514", message: "check constraint failed" },
+    });
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-2" } } }) },
+      from: vi.fn(() => ({ ...loadQuery, insert: reportInsert })),
+    } as never);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/community", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entryId: "11111111-1111-4111-8111-111111111111",
+          action: "report",
+        }),
+      }) as never
+    );
+
+    expect(response.status).toBe(500);
+  });
+
+  it("returns 500 when vote insert fails with non-duplicate error", async () => {
+    const loadQuery = {
+      select: vi.fn(() => loadQuery),
+      eq: vi.fn(() => loadQuery),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { id: "row-1", user_id: "owner-1", helpful_count: 2 },
+        error: null,
+      }),
+    };
+
+    const voteInsert = vi.fn().mockResolvedValue({
+      error: { code: "23514", message: "check constraint failed" },
+    });
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-2" } } }) },
+      from: vi.fn(() => ({ ...loadQuery, insert: voteInsert })),
+    } as never);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/community", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entryId: "11111111-1111-4111-8111-111111111111" }),
+      }) as never
+    );
+
+    expect(response.status).toBe(500);
+  });
+
   it("returns 500 when report DB update fails", async () => {
     const loadQuery = {
       select: vi.fn(() => loadQuery),
