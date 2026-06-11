@@ -23,6 +23,13 @@ const PatchSchema = z.object({
   reason: z.string().trim().max(300).optional(),
 });
 
+type CommunityEntryRecord = {
+  id: string;
+  user_id: string | null;
+  helpful_count: number | null;
+  report_count?: number | null;
+};
+
 function isMissingCommunityInfra(error: unknown) {
   const code = (error as { code?: string } | undefined)?.code;
   const message = String((error as { message?: string } | undefined)?.message ?? "").toLowerCase();
@@ -153,7 +160,7 @@ export async function PATCH(req: NextRequest) {
       .eq("id", payload.entryId)
       .maybeSingle();
 
-    let existing = primaryLoad.data;
+    let existing = primaryLoad.data as CommunityEntryRecord | null;
     let loadError = primaryLoad.error;
 
     if (loadError && isMissingCommunityInfra(loadError)) {
@@ -163,7 +170,7 @@ export async function PATCH(req: NextRequest) {
         .eq("id", payload.entryId)
         .maybeSingle();
 
-      existing = fallbackLoad.data;
+      existing = fallbackLoad.data as CommunityEntryRecord | null;
       loadError = fallbackLoad.error;
     }
 

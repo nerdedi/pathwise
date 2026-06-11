@@ -405,9 +405,9 @@ Do NOT wrap the output in any outer key like "itinerary". Return the flat object
           riskDetails: {},
         };
 
-    const transportTo =
+    const transportTo: TransportPlan | null =
       tripPlanTo.status === "fulfilled" && tripPlanTo.value
-        ? tripPlanTo.value
+        ? (tripPlanTo.value as unknown as TransportPlan)
         : fromSuburb
           ? buildFallbackTransportPlan({
               from: fromSuburb,
@@ -418,9 +418,9 @@ Do NOT wrap the output in any outer key like "itinerary". Return the flat object
             })
           : null;
 
-    const transportFrom =
+    const transportFrom: TransportPlan | null =
       tripPlanFrom.status === "fulfilled" && tripPlanFrom.value
-        ? tripPlanFrom.value
+        ? (tripPlanFrom.value as unknown as TransportPlan)
         : fromSuburb
           ? buildFallbackTransportPlan({
               from: `${venue.address}, ${venue.suburb}`,

@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { speakCalmText } from "@/lib/voice";
-import { Bell, Bus, Flag, Headphones, LocateFixed, MapPinned, Siren, Train } from "lucide-react";
+import { ArrowRightLeft, Bell, Bus, Flag, Headphones, LocateFixed, MapPinned, Siren, TimerReset, Train, Users, UtensilsCrossed } from "lucide-react";
 import { useMemo, useState } from "react";
 
 interface LiveTripDashboardProps {
@@ -132,6 +132,34 @@ export default function LiveTripDashboard({
             className="justify-start gap-2"
             onClick={() =>
               pushPrompt(
+                "Food court nearby",
+                "This is likely a busier food-court zone. Use headphones, choose edge seating, and keep your visit short if needed."
+              )
+            }
+          >
+            <UtensilsCrossed className="w-4 h-4" /> I am near the food court
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="justify-start gap-2"
+            onClick={() =>
+              pushPrompt(
+                "Queue is long",
+                "The queue is long right now. Step aside for two minutes, then choose: wait, switch lines, or do a calmer activity first."
+              )
+            }
+          >
+            <Users className="w-4 h-4" /> Queue is too long
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="justify-start gap-2"
+            onClick={() =>
+              pushPrompt(
                 "Need reset",
                 "You are doing the right thing by pausing. Find a quieter corner, drink water, and choose one small next step."
               )
@@ -160,12 +188,40 @@ export default function LiveTripDashboard({
             className="justify-start gap-2"
             onClick={() =>
               pushPrompt(
+                "Need quiet exit",
+                "Let’s use a quieter exit route now. Follow edge pathways, avoid central crowds, and ask staff for the calmest way out."
+              )
+            }
+          >
+            <ArrowRightLeft className="w-4 h-4" /> Find a quiet exit
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="justify-start gap-2"
+            onClick={() =>
+              pushPrompt(
                 "Location check",
                 "Confirm your location and next target point before moving to reduce last-minute stress."
               )
             }
           >
             <LocateFixed className="w-4 h-4" /> Check my location
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="justify-start gap-2"
+            onClick={() =>
+              pushPrompt(
+                "Quick reset",
+                "Take a 90-second reset: breathe out slowly, drop your shoulders, sip water, and pick one tiny next step."
+              )
+            }
+          >
+            <TimerReset className="w-4 h-4" /> 90-second reset
           </Button>
         </div>
       </CardContent>
