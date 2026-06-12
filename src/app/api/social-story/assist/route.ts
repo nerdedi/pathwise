@@ -1,5 +1,6 @@
 import { generateJson } from "@/lib/gemini";
 import { logError } from "@/lib/logger";
+import { recordModerationEvent } from "@/lib/moderation-telemetry";
 import { COPYRIGHT_RISK_TERMS, UNSAFE_TERMS } from "@/lib/social-story";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -101,23 +102,30 @@ function sanitizeOutput(value: {
 
   if (hasUnsafe || hasCopyrightRisk) {
     return {
-      title: "Calm next step",
-      text: "Let’s use a simple, safe step for this part of the story.",
-      sensoryCue: "Notice your surroundings and move at your pace.",
-      supportTip: "Take a breath and choose one small next action.",
-      speakText: "Let’s use a calm and safe next step.",
-      keywords: ["calm", "safe", "step"],
-      imagePrompt: "Simple calm illustration of a person taking one gentle next step",
+      panel: {
+        title: "Calm next step",
+        text: "Let’s use a simple, safe step for this part of the story.",
+        sensoryCue: "Notice your surroundings and move at your pace.",
+        supportTip: "Take a breath and choose one small next action.",
+        speakText: "Let’s use a calm and safe next step.",
+        keywords: ["calm", "safe", "step"],
+        imagePrompt: "Simple calm illustration of a person taking one gentle next step",
+      },
+      moderated: true,
     };
   }
 
-  return sanitized;
+  return { panel: sanitized, moderated: false };
 }
 
 export async function POST(req: NextRequest) {
   try {
     const clientId = getClientId(req);
     if (isRateLimited(clientId)) {
+      recordModerationEvent({
+        route: "/api/social-story/assist",
+        trigger: "rate-limit",
+      });
       return NextResponse.json(
         { error: "Too many AI assist requests. Please wait a moment and try again." },
         { status: 429 }
@@ -157,7 +165,7 @@ Improve this panel while preserving intent. Return JSON only.
 
     const response = (await generateJson(systemPrompt, userPrompt)) as Record<string, unknown>;
 
-    const suggested = sanitizeOutput({
+    const sanitizedResult = sanitizeOutput({
       title: String(response.title ?? body.panel.title),
       text: String(response.text ?? body.panel.text),
       sensoryCue: typeof response.sensoryCue === "string" ? response.sensoryCue : body.panel.sensoryCue,
@@ -169,7 +177,14 @@ Improve this panel while preserving intent. Return JSON only.
         : body.panel.keywords,
     });
 
-    return NextResponse.json({ panel: suggested });
+    if (sanitizedResult.moderated) {
+      recordModerationEvent({
+        route: "/api/social-story/assist",
+        trigger: "unsafe",
+      });
+    }
+
+    return NextResponse.json({ panel: sanitizedResult.panel });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(

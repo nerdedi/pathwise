@@ -80,6 +80,7 @@ export default function SocialStoryViewer({
   supportReminders = [],
 }: SocialStoryViewerProps) {
   const printRef = useRef<HTMLDivElement>(null);
+  const focusModePanelRef = useRef<HTMLDivElement>(null);
   const handlePrint = useReactToPrint({ contentRef: printRef });
   const [focusMode, setFocusMode] = useState(false);
   const [activePanelIndex, setActivePanelIndex] = useState(0);
@@ -94,6 +95,7 @@ export default function SocialStoryViewer({
   const [editorMessage, setEditorMessage] = useState("");
   const [newFrameCount, setNewFrameCount] = useState(1);
   const [aiAssistingIndex, setAiAssistingIndex] = useState<number | null>(null);
+  const [uploadErrors, setUploadErrors] = useState<Record<number, string>>({});
   const speechLanguage = useMemo(
     () => mapStoryLanguageToSpeechLang(selectedLanguage),
     [selectedLanguage]
@@ -109,6 +111,11 @@ export default function SocialStoryViewer({
     const stored = parseStoredSocialStory(sessionStorage.getItem(key));
     setStoryPanels(stored ?? normalizeSocialStoryPanels(panels));
   }, [itineraryId, panels]);
+
+  useEffect(() => {
+    if (!focusMode) return;
+    focusModePanelRef.current?.focus();
+  }, [focusMode, activePanelIndex]);
 
   const activePanel = storyPanels[activePanelIndex] ?? storyPanels[0];
   const textSizeClass =
@@ -301,7 +308,9 @@ export default function SocialStoryViewer({
   const handleImageUpload = async (index: number, file: File | undefined) => {
     if (!file) return;
     if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      setEditorMessage("Only PNG, JPEG, or WebP files are allowed.");
+      const message = "Only PNG, JPEG, or WebP files are allowed.";
+      setUploadErrors((current) => ({ ...current, [index]: message }));
+      setEditorMessage(message);
       return;
     }
 
@@ -313,16 +322,24 @@ export default function SocialStoryViewer({
     }).catch(() => "");
 
     if (!dataUrl) {
-      setEditorMessage("Could not read image file.");
+      const message = "Could not read image file.";
+      setUploadErrors((current) => ({ ...current, [index]: message }));
+      setEditorMessage(message);
       return;
     }
 
     const validation = validateSocialStoryImageDataUrl(dataUrl);
     if (!validation.ok) {
+      setUploadErrors((current) => ({ ...current, [index]: validation.reason }));
       setEditorMessage(validation.reason);
       return;
     }
 
+    setUploadErrors((current) => {
+      const next = { ...current };
+      delete next[index];
+      return next;
+    });
     setPanelImageUrl(index, dataUrl);
     setEditorMessage("Image uploaded safely for this frame.");
   };
@@ -572,7 +589,11 @@ export default function SocialStoryViewer({
             <Languages className="w-3 h-3" />
             Language toggle shows translated text when available. Editing updates the selected language view.
           </p>
-          {editorMessage && <p className="text-xs text-sage-600 mt-2">{editorMessage}</p>}
+          {editorMessage && (
+            <p role="status" aria-live="polite" className="text-xs text-sage-600 mt-2">
+              {editorMessage}
+            </p>
+          )}
         </div>
 
         {/* Printable story */}
@@ -597,7 +618,11 @@ export default function SocialStoryViewer({
                 const activeContent = getSocialStoryPanelContent(activePanel, selectedLanguage);
                 const visual = getSocialStoryVisual(activePanel, selectedLanguage);
                 return (
-              <div className="rounded-2xl border-2 p-6 bg-white border-lavender-200 shadow-sm">
+              <div
+                ref={focusModePanelRef}
+                tabIndex={-1}
+                className="rounded-2xl border-2 p-6 bg-white border-lavender-200 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage-400"
+              >
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-bold text-sage-500 bg-white rounded-full w-7 h-7 flex items-center justify-center border border-sage-200">
                     {activePanel.sequence}
@@ -696,15 +721,31 @@ export default function SocialStoryViewer({
                     <label className="text-xs text-sage-600">
                       Upload your own image (PNG/JPEG/WebP, max 5MB)
                       <input
+                        id={`social-story-upload-${activePanelIndex}`}
                         type="file"
                         accept="image/png,image/jpeg,image/webp"
                         className="mt-1 block w-full text-xs"
+                        aria-describedby={
+                          uploadErrors[activePanelIndex]
+                            ? `social-story-upload-error-${activePanelIndex}`
+                            : undefined
+                        }
                         onChange={(e) => {
                           void handleImageUpload(activePanelIndex, e.target.files?.[0]);
                           e.currentTarget.value = "";
                         }}
                       />
                     </label>
+                    {uploadErrors[activePanelIndex] && (
+                      <p
+                        id={`social-story-upload-error-${activePanelIndex}`}
+                        className="text-xs text-red-600"
+                        role="status"
+                        aria-live="polite"
+                      >
+                        {uploadErrors[activePanelIndex]}
+                      </p>
+                    )}
 
                     <div>
                       <p className="text-xs text-sage-600 mb-1">Choose a safe built-in image</p>
@@ -759,7 +800,9 @@ export default function SocialStoryViewer({
                   <ChevronLeft className="w-4 h-4" />
                   Previous step
                 </Button>
-                <p className="text-xs text-sage-500">Step {activePanelIndex + 1} of {storyPanels.length}</p>
+                <p className="text-xs text-sage-500" aria-live="polite">
+                  Step {activePanelIndex + 1} of {storyPanels.length}
+                </p>
                 <Button variant="outline" onClick={() => goToPanel(activePanelIndex + 1)} disabled={activePanelIndex >= storyPanels.length - 1} className="gap-1.5">
                   Next step
                   <ChevronRight className="w-4 h-4" />
@@ -894,15 +937,31 @@ export default function SocialStoryViewer({
                       <label className="text-xs text-sage-600 block">
                         Upload image for this frame
                         <input
+                          id={`social-story-upload-${index}`}
                           type="file"
                           accept="image/png,image/jpeg,image/webp"
                           className="mt-1 block w-full text-xs"
+                          aria-describedby={
+                            uploadErrors[index]
+                              ? `social-story-upload-error-${index}`
+                              : undefined
+                          }
                           onChange={(e) => {
                             void handleImageUpload(index, e.target.files?.[0]);
                             e.currentTarget.value = "";
                           }}
                         />
                       </label>
+                      {uploadErrors[index] && (
+                        <p
+                          id={`social-story-upload-error-${index}`}
+                          className="text-xs text-red-600"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          {uploadErrors[index]}
+                        </p>
+                      )}
                     </div>
                   )}
 

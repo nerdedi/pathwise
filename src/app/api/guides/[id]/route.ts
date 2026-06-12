@@ -5,6 +5,7 @@ import {
     sanitizeItineraryForAccess,
 } from "@/lib/collaboration";
 import { logError } from "@/lib/logger";
+import { recordModerationEvent } from "@/lib/moderation-telemetry";
 import { sanitizeSocialStoryPanelsForStorage } from "@/lib/social-story";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -126,11 +127,43 @@ export async function PUT(req: NextRequest, { params }: Params) {
     }
 
     const itineraryData = itinerary as unknown as Itinerary;
+
+    if (itineraryData.lastEditedAt) {
+      const { data: ownerSnapshot, error: ownerSnapshotError } = await supabase
+        .from("itineraries")
+        .select("itinerary_json")
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (ownerSnapshotError) throw ownerSnapshotError;
+
+      const existingOwner = ownerSnapshot?.itinerary_json as Itinerary | null;
+      if (
+        existingOwner?.lastEditedAt &&
+        existingOwner.lastEditedAt !== itineraryData.lastEditedAt
+      ) {
+        return NextResponse.json(
+          {
+            error: "Guide was edited by someone else. Please reload and try again.",
+            conflict: true,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     const sanitizedSocialStory = sanitizeSocialStoryPanelsForStorage(
       itineraryData.socialStory ?? []
     );
 
     if (sanitizedSocialStory.imageSourceIssues.length > 0) {
+      recordModerationEvent({
+        route: "/api/guides/:id PUT",
+        trigger: "image-source",
+        panelCount: itineraryData.socialStory?.length ?? 0,
+        issuesCount: sanitizedSocialStory.imageSourceIssues.length,
+      });
       return NextResponse.json(
         {
           error:
@@ -142,6 +175,12 @@ export async function PUT(req: NextRequest, { params }: Params) {
     }
 
     if (!sanitizedSocialStory.safety.ok) {
+      recordModerationEvent({
+        route: "/api/guides/:id PUT",
+        trigger: "unsafe",
+        panelCount: itineraryData.socialStory?.length ?? 0,
+        issuesCount: sanitizedSocialStory.safety.issues.length,
+      });
       return NextResponse.json(
         {
           error:
@@ -202,6 +241,21 @@ export async function PUT(req: NextRequest, { params }: Params) {
       if (sharedError) throw sharedError;
 
       const existingShared = sharedGuide?.itinerary_json as Itinerary | null;
+
+      if (
+        itineraryData.lastEditedAt &&
+        existingShared?.lastEditedAt &&
+        existingShared.lastEditedAt !== itineraryData.lastEditedAt
+      ) {
+        return NextResponse.json(
+          {
+            error: "Guide was edited by someone else. Please reload and try again.",
+            conflict: true,
+          },
+          { status: 409 }
+        );
+      }
+
       const collaboratorRole = getCollaboratorRole(existingShared, user.email.toLowerCase());
 
       if (!existingShared || !collaboratorRole) {

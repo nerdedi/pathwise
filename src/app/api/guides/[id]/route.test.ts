@@ -242,6 +242,52 @@ describe("guide detail route", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 409 when PUT includes stale lastEditedAt token", async () => {
+    const currentStored = makeItinerary({
+      lastEditedAt: "2026-06-12T00:00:00.000Z",
+    });
+
+    const ownerSnapshotQuery = {
+      select: vi.fn(() => ownerSnapshotQuery),
+      eq: vi.fn(() => ownerSnapshotQuery),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { itinerary_json: currentStored },
+        error: null,
+      }),
+    };
+
+    const ownerUpdate = {
+      update: vi.fn(() => ownerUpdate),
+      eq: vi.fn(() => ownerUpdate),
+      select: vi.fn().mockResolvedValue({ data: [{ id: "guide-1" }], error: null }),
+    };
+
+    let fromCallCount = 0;
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "owner@example.com" } } }) },
+      from: vi.fn(() => {
+        fromCallCount += 1;
+        return fromCallCount === 1 ? ownerSnapshotQuery : ownerUpdate;
+      }),
+    } as never);
+
+    const staleItinerary = makeItinerary({
+      lastEditedAt: "2026-06-11T00:00:00.000Z",
+    });
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary: staleItinerary }),
+      }) as never,
+      { params: Promise.resolve({ id: staleItinerary.id }) }
+    );
+
+    expect(response.status).toBe(409);
+    expect(ownerUpdate.update).not.toHaveBeenCalled();
+  });
+
   it("rejects PUT when social-story contains unsafe language", async () => {
     vi.mocked(createClient).mockResolvedValue({
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "owner@example.com" } } }) },

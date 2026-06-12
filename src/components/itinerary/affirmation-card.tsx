@@ -1,7 +1,7 @@
 "use client";
 
 import type { Affirmation } from "@/types/itinerary";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Sparkles } from "lucide-react";
 
 interface AffirmationCardProps {
@@ -27,6 +27,8 @@ export default function AffirmationCard({
   affirmations,
   timing,
 }: AffirmationCardProps) {
+  const prefersReducedMotion = useReducedMotion();
+
   const filtered = timing
     ? affirmations.filter((a) => a.timing === timing)
     : affirmations;
@@ -53,9 +55,11 @@ export default function AffirmationCard({
               {items.map((affirmation, i) => (
                 <motion.div
                   key={i}
-                  initial={{ opacity: 0, y: 6 }}
+                  initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.08 }}
+                  transition={
+                    prefersReducedMotion ? { duration: 0 } : { delay: i * 0.08 }
+                  }
                   className={`rounded-2xl border bg-gradient-to-br p-4 ${TIMING_COLORS[timingKey]}`}
                 >
                   <p className="text-sm text-sage-800 leading-relaxed italic">
