@@ -90,6 +90,28 @@ const UNSAFE_TERMS = [
   "racist",
   "abuse",
   "violent",
+  "blood",
+  "nsfw",
+  "slur",
+  "molest",
+  "terror",
+];
+
+const COPYRIGHT_RISK_TERMS = [
+  "copyright",
+  "disney",
+  "pixar",
+  "marvel",
+  "dc comics",
+  "pokemon",
+  "star wars",
+  "hello kitty",
+  "nike",
+  "apple logo",
+  "brand logo",
+  "trademark",
+  "™",
+  "®",
 ];
 
 function cleanText(value: string | undefined) {
@@ -100,6 +122,11 @@ function cleanText(value: string | undefined) {
 function textLooksUnsafe(value: string | undefined) {
   const normalized = (value ?? "").toLowerCase();
   return UNSAFE_TERMS.some((term) => normalized.includes(term));
+}
+
+function textHasCopyrightRisk(value: string | undefined) {
+  const normalized = (value ?? "").toLowerCase();
+  return COPYRIGHT_RISK_TERMS.some((term) => normalized.includes(term));
 }
 
 function cleanKeywords(keywords: string[] | undefined) {
@@ -168,6 +195,17 @@ export function validateSocialStoryImageDataUrl(dataUrl: string) {
 }
 
 function sanitizePanelImageUrl(panel: SocialStoryPanel, index: number) {
+  if (
+    typeof panel.imageUrl === "string" &&
+    panel.imageUrl.startsWith("data:image/")
+  ) {
+    const validation = validateSocialStoryImageDataUrl(panel.imageUrl);
+    if (validation.ok) {
+      return cleanText(panel.imageUrl);
+    }
+    return buildOpenSourceImageUrl(panel, index);
+  }
+
   if (isAllowedSocialStoryImageUrl(panel.imageUrl)) {
     return cleanText(panel.imageUrl);
   }
@@ -302,6 +340,11 @@ export function validateSocialStorySafety(panels: SocialStoryPanel[]) {
       issues.push(`Step ${index + 1}: contains potentially unsafe language.`);
     }
 
+    const copyrightFields = [panel.title, panel.text, panel.imagePrompt, panel.speakText];
+    if (copyrightFields.some((value) => textHasCopyrightRisk(value))) {
+      issues.push(`Step ${index + 1}: contains copyright/trademark-risk language.`);
+    }
+
     if (panel.imageUrl && !isAllowedSocialStoryImageUrl(panel.imageUrl)) {
       issues.push(`Step ${index + 1}: image source is not allowed.`);
     }
@@ -310,6 +353,62 @@ export function validateSocialStorySafety(panels: SocialStoryPanel[]) {
   return {
     ok: issues.length === 0,
     issues,
+  };
+}
+
+export function sanitizeSocialStoryPanelsForStorage(panels: SocialStoryPanel[]) {
+  const imageSourceIssues = panels.flatMap((panel, index) => {
+    const rawImageUrl = cleanText(panel.imageUrl);
+    if (!rawImageUrl) return [];
+
+    if (rawImageUrl.startsWith("data:image/")) {
+      const validation = validateSocialStoryImageDataUrl(rawImageUrl);
+      if (!validation.ok) {
+        return [`Step ${index + 1}: ${validation.reason}`];
+      }
+      return [];
+    }
+
+    if (!isAllowedSocialStoryImageUrl(rawImageUrl)) {
+      return [`Step ${index + 1}: image source is not allowed.`];
+    }
+
+    return [];
+  });
+
+  const normalized = normalizeSocialStoryPanels(panels);
+  const safety = validateSocialStorySafety(normalized);
+
+  const sanitized = normalized.map((panel) => {
+    const fallbackTitle = panel.title || "Calm step";
+    const fallbackText = panel.text || "I can take this step at my own pace.";
+
+    const title = textLooksUnsafe(panel.title) || textHasCopyrightRisk(panel.title)
+      ? "Calm step"
+      : fallbackTitle;
+    const text = textLooksUnsafe(panel.text) || textHasCopyrightRisk(panel.text)
+      ? "I can take this step at my own pace."
+      : fallbackText;
+    const speakText = textLooksUnsafe(panel.speakText) || textHasCopyrightRisk(panel.speakText)
+      ? `${title}. ${text}`
+      : panel.speakText;
+    const imagePrompt = textLooksUnsafe(panel.imagePrompt) || textHasCopyrightRisk(panel.imagePrompt)
+      ? "Simple calm illustration with no branded characters or logos"
+      : panel.imagePrompt;
+
+    return {
+      ...panel,
+      title,
+      text,
+      speakText,
+      imagePrompt,
+    };
+  });
+
+  return {
+    panels: normalizeSocialStoryPanels(sanitized),
+    safety,
+    imageSourceIssues,
   };
 }
 

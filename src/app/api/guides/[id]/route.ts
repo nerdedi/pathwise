@@ -5,6 +5,7 @@ import {
     sanitizeItineraryForAccess,
 } from "@/lib/collaboration";
 import { logError } from "@/lib/logger";
+import { sanitizeSocialStoryPanelsForStorage } from "@/lib/social-story";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { Itinerary } from "@/types/itinerary";
@@ -125,10 +126,41 @@ export async function PUT(req: NextRequest, { params }: Params) {
     }
 
     const itineraryData = itinerary as unknown as Itinerary;
-    const normalizedCollaborators = normalizeCollaborators(itineraryData);
+    const sanitizedSocialStory = sanitizeSocialStoryPanelsForStorage(
+      itineraryData.socialStory ?? []
+    );
+
+    if (sanitizedSocialStory.imageSourceIssues.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Social story contains unsupported image sources. Please use uploaded images or approved open-source images.",
+          issues: sanitizedSocialStory.imageSourceIssues.slice(0, 3),
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!sanitizedSocialStory.safety.ok) {
+      return NextResponse.json(
+        {
+          error:
+            "Social story contains disallowed content. Please remove unsafe or copyrighted language.",
+          issues: sanitizedSocialStory.safety.issues.slice(0, 3),
+        },
+        { status: 400 }
+      );
+    }
+
+    const sanitizedItineraryData: Itinerary = {
+      ...itineraryData,
+      socialStory: sanitizedSocialStory.panels,
+    };
+    const normalizedCollaborators = normalizeCollaborators(sanitizedItineraryData);
     const nowIso = new Date().toISOString();
     const ownerReadyItinerary: Itinerary = {
       ...itineraryData,
+      ...sanitizedItineraryData,
       sharedWith: normalizedCollaborators,
       sharedWithEmails: normalizedCollaborators.map((item) => item.email),
       lastEditedAt: nowIso,
@@ -185,8 +217,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
       const protectedCollaborators = normalizeCollaborators(existingShared);
       const collaboratorSafeUpdate: Itinerary = {
-        ...itineraryData,
-        sections: mergeSectionsRespectingLocks(existingShared, itineraryData),
+        ...sanitizedItineraryData,
+        sections: mergeSectionsRespectingLocks(existingShared, sanitizedItineraryData),
         lockedSectionIds: existingShared.lockedSectionIds,
         privateNotes: existingShared.privateNotes,
         sharedWith: protectedCollaborators,

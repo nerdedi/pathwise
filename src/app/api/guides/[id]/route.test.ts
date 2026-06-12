@@ -242,6 +242,105 @@ describe("guide detail route", () => {
     expect(response.status).toBe(400);
   });
 
+  it("rejects PUT when social-story contains unsafe language", async () => {
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "owner@example.com" } } }) },
+      from: vi.fn(),
+    } as never);
+
+    const itinerary = makeItinerary({
+      socialStory: [
+        {
+          sequence: 1,
+          title: "Arrival",
+          text: "I want to kill everyone here",
+        },
+      ],
+    });
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary }),
+      }) as never,
+      { params: Promise.resolve({ id: itinerary.id }) }
+    );
+
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as { error: string; issues: string[] };
+    expect(payload.error).toContain("disallowed content");
+    expect(payload.issues[0]).toContain("unsafe language");
+  });
+
+  it("rejects PUT when social-story contains unapproved image source", async () => {
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "owner@example.com" } } }) },
+      from: vi.fn(),
+    } as never);
+
+    const itinerary = makeItinerary({
+      socialStory: [
+        {
+          sequence: 1,
+          title: "Arrival",
+          text: "I arrive calmly.",
+          imageUrl: "https://example.com/not-allowed-image.png",
+        },
+      ],
+    });
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary }),
+      }) as never,
+      { params: Promise.resolve({ id: itinerary.id }) }
+    );
+
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as { error: string; issues: string[] };
+    expect(payload.error).toContain("unsupported image sources");
+    expect(payload.issues[0]).toContain("image source is not allowed");
+  });
+
+  it("accepts PUT when social-story uses safe data URL image", async () => {
+    const ownerUpdate = {
+      update: vi.fn(() => ownerUpdate),
+      eq: vi.fn(() => ownerUpdate),
+      select: vi.fn().mockResolvedValue({ data: [{ id: "guide-1" }], error: null }),
+    };
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "owner@example.com" } } }) },
+      from: vi.fn(() => ownerUpdate),
+    } as never);
+
+    const itinerary = makeItinerary({
+      socialStory: [
+        {
+          sequence: 1,
+          title: "Arrival",
+          text: "I arrive calmly.",
+          imageUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+zY8AAAAASUVORK5CYII=",
+        },
+      ],
+    });
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary }),
+      }) as never,
+      { params: Promise.resolve({ id: itinerary.id }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(ownerUpdate.update).toHaveBeenCalled();
+  });
+
   it("allows editor collaborators to save unlocked sections via admin path", async () => {
     const sharedItinerary = makeItinerary({
       sharedWith: [{ email: "editor@example.com", role: "editor" }],

@@ -5,10 +5,11 @@ vi.mock("@/lib/gemini", () => ({
   generateJson: vi.fn(),
 }));
 
-import { POST } from "./route";
+import { __resetAssistRateLimitForTests, POST } from "./route";
 
 beforeEach(() => {
   vi.resetAllMocks();
+  __resetAssistRateLimitForTests();
 });
 
 describe("social story assist route", () => {
@@ -67,6 +68,60 @@ describe("social story assist route", () => {
     const payload = (await response.json()) as { panel: { title: string; text: string } };
     expect(payload.panel.title).toBe("Calm next step");
     expect(payload.panel.text).toContain("safe");
+  });
+
+  it("returns safe fallback when generated text has copyright-risk terms", async () => {
+    vi.mocked(generateJson).mockResolvedValue({
+      title: "Disney-style scene",
+      text: "Use a marvel hero at the entrance",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/social-story/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          venueName: "Calm Museum",
+          panel: {
+            title: "Arrive",
+            text: "I arrive.",
+          },
+        }),
+      }) as never
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { panel: { title: string; text: string } };
+    expect(payload.panel.title).toBe("Calm next step");
+    expect(payload.panel.text).toContain("safe");
+  });
+
+  it("returns 429 when assist request rate limit is exceeded", async () => {
+    vi.mocked(generateJson).mockResolvedValue({
+      title: "I arrive calmly",
+      text: "I arrive and take one breath.",
+    });
+
+    let status = 200;
+    for (let i = 0; i < 31; i += 1) {
+      const response = await POST(
+        new Request("http://localhost/api/social-story/assist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-forwarded-for": "203.0.113.10" },
+          body: JSON.stringify({
+            venueName: "Calm Museum",
+            panel: {
+              title: "Arrive",
+              text: "I arrive.",
+            },
+          }),
+        }) as never
+      );
+      status = response.status;
+      if (status === 429) break;
+    }
+
+    expect(status).toBe(429);
   });
 
   it("returns 400 for invalid payload", async () => {
