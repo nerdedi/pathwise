@@ -12,8 +12,9 @@ on:
 jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
-      - name: Force VS Code CLI without extensions
+      - name: Setup VS Code CLI wrapper with extensions disabled
         shell: bash
         run: |
           mkdir -p "$HOME/.local/bin"
@@ -24,9 +25,6 @@ jobs:
             exit 0
           fi
 
-          cat > "$HOME/.local/bin/code" <<EOF
-          #!/usr/bin/env bash
-          exec "$CODE_BIN" --disable-extensions "\$@"
-          EOF
+          printf '#!/usr/bin/env bash\nexec %q --disable-extensions "$@"\n' "$CODE_BIN" > "$HOME/.local/bin/code"
           chmod +x "$HOME/.local/bin/code"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
