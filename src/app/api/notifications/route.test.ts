@@ -34,7 +34,9 @@ describe("notifications route", () => {
             notification_type: "live_status_changed",
             title: "Venue status changed",
             body: "Venue is now open",
-            metadata: {},
+            metadata: {
+              preferredGuideId: "11111111-1111-4111-8111-111111111111",
+            },
             read_at: null,
             created_at: "2026-06-12T00:00:00.000Z",
           },
@@ -51,8 +53,13 @@ describe("notifications route", () => {
     const response = await GET(new Request("http://localhost/api/notifications?limit=5") as never);
 
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as { notifications: Array<{ type: string }> };
+    const payload = (await response.json()) as {
+      notifications: Array<{ type: string; deepLink: string }>;
+    };
     expect(payload.notifications[0]?.type).toBe("live_status_changed");
+    expect(payload.notifications[0]?.deepLink).toBe(
+      "/plan/11111111-1111-4111-8111-111111111111"
+    );
   });
 
   it("marks a single notification as read", async () => {

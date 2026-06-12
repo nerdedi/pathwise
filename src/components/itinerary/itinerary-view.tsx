@@ -732,6 +732,7 @@ export default function ItineraryView({
           venueUrl: venue.url,
           venueName: venue.name,
           notificationsEnabled: true,
+          preferredGuideId: draftItinerary.id,
         }),
       });
 

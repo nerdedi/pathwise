@@ -226,7 +226,7 @@ async function persistLiveVenueState(snapshot: {
 
   const subscribersBuilder = admin
     .from("user_saved_venues")
-    .select("user_id")
+    .select("user_id, preferred_guide_id")
     .eq("venue_url", snapshot.venueUrl)
     .eq("notifications_enabled", true);
 
@@ -251,6 +251,7 @@ async function persistLiveVenueState(snapshot: {
       venueName: snapshot.venueName,
       eventType: event.eventType,
       eventId: eventRow?.id,
+      preferredGuideId: subscriber.preferred_guide_id,
       ...event.payload,
     },
   }));

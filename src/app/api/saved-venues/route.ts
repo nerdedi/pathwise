@@ -7,6 +7,7 @@ const SaveVenueSchema = z.object({
   venueUrl: z.string().url(),
   venueName: z.string().min(1),
   notificationsEnabled: z.boolean().optional(),
+  preferredGuideId: z.string().uuid().optional(),
 });
 
 const UpdateSavedVenueSchema = z.object({
@@ -43,6 +44,7 @@ export async function GET() {
         venueUrl: row.venue_url,
         venueName: row.venue_name,
         notificationsEnabled: row.notifications_enabled,
+        preferredGuideId: row.preferred_guide_id,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       })),
@@ -75,6 +77,7 @@ export async function POST(req: NextRequest) {
         venue_url: payload.venueUrl,
         venue_name: payload.venueName,
         notifications_enabled: payload.notificationsEnabled ?? true,
+        preferred_guide_id: payload.preferredGuideId,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,venue_url" }

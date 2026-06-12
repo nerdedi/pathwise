@@ -11,7 +11,7 @@ import {
 } from "@/lib/local-auth";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseAuthConfigured } from "@/lib/supabase/config";
-import { Calendar, Copy, Globe, LogOut, MapPin, Save, Search, Trash2 } from "lucide-react";
+import { Bell, Calendar, CheckCheck, Copy, Globe, LogOut, MapPin, Save, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -23,6 +23,16 @@ type GuideSummary = {
   risk_score: number | null;
   created_at: string;
   is_public?: boolean;
+};
+
+type UserNotification = {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  deepLink: string;
+  readAt: string | null;
+  createdAt: string;
 };
 
 export default function GuidesPage() {
@@ -40,6 +50,10 @@ export default function GuidesPage() {
   const [query, setQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<UserNotification[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [markingNotificationId, setMarkingNotificationId] = useState<string | null>(null);
+  const [markingAllNotifications, setMarkingAllNotifications] = useState(false);
 
   const applyLocalTestLogin = (nextEmail = LOCAL_TEST_EMAIL, passwordValue = LOCAL_TEST_PASSWORD) => {
     if (passwordValue.length < 8) {
@@ -112,6 +126,27 @@ export default function GuidesPage() {
     }
   };
 
+  const loadNotifications = async () => {
+    setNotificationsLoading(true);
+    try {
+      const res = await fetch("/api/notifications?limit=8", { cache: "no-store" });
+      if (res.status === 401) {
+        setNotifications([]);
+        return;
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to load notifications");
+      }
+      const data = await res.json();
+      setNotifications((data.notifications ?? []) as UserNotification[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load notifications");
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     let subscription: { unsubscribe: () => void } | null = null;
@@ -134,6 +169,7 @@ export default function GuidesPage() {
 
       if (user) {
         await loadGuides();
+        await loadNotifications();
       } else {
         setLoading(false);
       }
@@ -147,8 +183,10 @@ export default function GuidesPage() {
         setUserEmail(session?.user?.email ?? null);
         if (session?.user) {
           await loadGuides();
+          await loadNotifications();
         } else {
           setGuides([]);
+          setNotifications([]);
           setLoading(false);
         }
       });
@@ -280,6 +318,57 @@ export default function GuidesPage() {
       setError(err instanceof Error ? err.message : "Failed to delete guide");
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const markNotificationRead = async (notificationId: string) => {
+    setMarkingNotificationId(notificationId);
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: notificationId }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to mark notification read");
+      }
+
+      setNotifications((prev) =>
+        prev.map((item) =>
+          item.id === notificationId
+            ? { ...item, readAt: new Date().toISOString() }
+            : item
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to mark notification read");
+    } finally {
+      setMarkingNotificationId(null);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    setMarkingAllNotifications(true);
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markAllRead: true }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to mark all notifications read");
+      }
+
+      const nowIso = new Date().toISOString();
+      setNotifications((prev) => prev.map((item) => ({ ...item, readAt: item.readAt ?? nowIso })));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to mark all notifications read");
+    } finally {
+      setMarkingAllNotifications(false);
     }
   };
 
@@ -425,6 +514,81 @@ export default function GuidesPage() {
         {userEmail && (
           <>
             <p className="text-xs text-sage-500 mb-3">Signed in as {userEmail}</p>
+
+            <div id="notifications" className="mb-4 rounded-2xl border border-sage-100 bg-white p-5 shadow-sm">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="flex items-center gap-2 text-lg font-semibold text-sage-900">
+                    <Bell className="h-4 w-4 text-sage-600" />
+                    Live notifications
+                  </h2>
+                  <p className="text-sm text-sage-600 mt-1">
+                    Updates about saved venues, status changes, and special closures.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={markAllNotificationsRead}
+                  disabled={markingAllNotifications || notifications.every((item) => item.readAt)}
+                  className="gap-1.5"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  {markingAllNotifications ? "Marking…" : "Mark all read"}
+                </Button>
+              </div>
+
+              {notificationsLoading ? (
+                <p className="text-sm text-sage-500">Loading notifications…</p>
+              ) : notifications.length === 0 ? (
+                <p className="text-sm text-sage-500">No notifications yet. Save a venue to start getting live updates.</p>
+              ) : (
+                <div className="space-y-3">
+                  {notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={`rounded-xl border p-3 ${notification.readAt ? "border-sage-100 bg-sage-50/40" : "border-calm-200 bg-calm-50/60"}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-sage-900">{notification.title}</p>
+                            {!notification.readAt && (
+                              <span className="rounded-full bg-calm-100 px-2 py-0.5 text-[11px] font-medium text-calm-700">
+                                New
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-sm text-sage-700">{notification.body}</p>
+                          <p className="mt-2 text-xs text-sage-500">
+                            {new Date(notification.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <Link href={notification.deepLink} className="inline-flex">
+                            <Button type="button" variant="outline" size="sm">
+                              Open
+                            </Button>
+                          </Link>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={Boolean(notification.readAt) || markingNotificationId === notification.id}
+                            onClick={() => {
+                              void markNotificationRead(notification.id);
+                            }}
+                          >
+                            {markingNotificationId === notification.id ? "Saving…" : notification.readAt ? "Read" : "Mark read"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <div className="relative mb-4">
               <Search className="w-4 h-4 text-sage-400 absolute left-3 top-1/2 -translate-y-1/2" />

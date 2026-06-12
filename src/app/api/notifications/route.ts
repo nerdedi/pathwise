@@ -41,6 +41,10 @@ export async function GET(req: NextRequest) {
         title: row.title,
         body: row.body,
         metadata: row.metadata,
+        deepLink:
+          typeof row.metadata?.preferredGuideId === "string"
+            ? `/plan/${row.metadata.preferredGuideId}`
+            : "/guides",
         readAt: row.read_at,
         createdAt: row.created_at,
       })),

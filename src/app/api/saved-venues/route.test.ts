@@ -33,6 +33,7 @@ describe("saved venues route", () => {
             venue_url: "https://example.com",
             venue_name: "Example",
             notifications_enabled: true,
+            preferred_guide_id: "11111111-1111-4111-8111-111111111111",
             created_at: "2026-06-12T00:00:00.000Z",
             updated_at: "2026-06-12T00:00:00.000Z",
           },
@@ -48,8 +49,13 @@ describe("saved venues route", () => {
 
     const response = await GET();
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as { savedVenues: Array<{ venueUrl: string }> };
+    const payload = (await response.json()) as {
+      savedVenues: Array<{ venueUrl: string; preferredGuideId?: string | null }>;
+    };
     expect(payload.savedVenues[0]?.venueUrl).toBe("https://example.com");
+    expect(payload.savedVenues[0]?.preferredGuideId).toBe(
+      "11111111-1111-4111-8111-111111111111"
+    );
   });
 
   it("saves a venue subscription", async () => {
@@ -70,12 +76,18 @@ describe("saved venues route", () => {
           venueUrl: "https://example.com",
           venueName: "Example",
           notificationsEnabled: true,
+          preferredGuideId: "11111111-1111-4111-8111-111111111111",
         }),
       }) as never
     );
 
     expect(response.status).toBe(200);
-    expect(query.upsert).toHaveBeenCalled();
+    expect(query.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preferred_guide_id: "11111111-1111-4111-8111-111111111111",
+      }),
+      expect.anything()
+    );
   });
 
   it("updates notification preference", async () => {

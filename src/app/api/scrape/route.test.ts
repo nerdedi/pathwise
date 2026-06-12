@@ -97,7 +97,16 @@ describe("scrape route", () => {
       subscribersEqCalls += 1;
       if (subscribersEqCalls >= 2) {
         return Promise.resolve({
-          data: [{ user_id: "user-1" }, { user_id: "user-2" }],
+          data: [
+            {
+              user_id: "user-1",
+              preferred_guide_id: "11111111-1111-4111-8111-111111111111",
+            },
+            {
+              user_id: "user-2",
+              preferred_guide_id: null,
+            },
+          ],
           error: null,
         });
       }
@@ -136,7 +145,12 @@ describe("scrape route", () => {
     expect(eventInsert.insert).toHaveBeenCalled();
     expect(notificationsInsert.insert).toHaveBeenCalledWith(
       expect.arrayContaining([
-        expect.objectContaining({ user_id: "user-1" }),
+        expect.objectContaining({
+          user_id: "user-1",
+          metadata: expect.objectContaining({
+            preferredGuideId: "11111111-1111-4111-8111-111111111111",
+          }),
+        }),
         expect.objectContaining({ user_id: "user-2" }),
       ])
     );
