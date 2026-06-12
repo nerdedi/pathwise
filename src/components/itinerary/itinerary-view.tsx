@@ -6,9 +6,11 @@ import {
     normalizeCollaborators,
     normalizeLockedSectionIds,
 } from "@/lib/collaboration";
+import { busynessPercent, describeBusyness } from "@/lib/live-state";
 import type { WeatherDay } from "@/lib/weather";
 import { getWeatherPackingTips } from "@/lib/weather";
 import type { CollaborationRole, Itinerary } from "@/types/itinerary";
+import type { LiveVenueState } from "@/types/venue";
 import {
     BookOpen,
     ChevronDown,
@@ -232,6 +234,12 @@ export default function ItineraryView({
   const [activeMapSectionId, setActiveMapSectionId] = useState<string | null>(
     itinerary.sections[0]?.id ?? null
   );
+  const [liveState, setLiveState] = useState<LiveVenueState | null>(
+    itinerary.venueData.liveState ?? null
+  );
+  const [liveStateLoading, setLiveStateLoading] = useState(false);
+  const [liveStateUnavailable, setLiveStateUnavailable] = useState(false);
+  const [clockNow, setClockNow] = useState(() => Date.now());
 
   const venue = draftItinerary.venueData;
   const collaborators = normalizeCollaborators(draftItinerary);
@@ -244,6 +252,34 @@ export default function ItineraryView({
   const estimatedFieldCount = venue.sourceMeta?.estimatedFieldPaths?.length ?? 0;
   const communityVotesKey = `pathwise_community_votes_${draftItinerary.id}`;
   const communityReportsKey = `pathwise_community_reports_${draftItinerary.id}`;
+  const nextChangeCountdown = (() => {
+    if (!liveState?.nextChangeAt) return null;
+    const diffMs = new Date(liveState.nextChangeAt).getTime() - clockNow;
+    if (!Number.isFinite(diffMs) || diffMs <= 0) return null;
+    const totalMinutes = Math.ceil(diffMs / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours <= 0) return `${minutes} min`;
+    return `${hours}h ${minutes}m`;
+  })();
+
+  const liveWeatherSuggestion =
+    liveState?.weatherRecommendation ||
+    (draftItinerary.weather
+      ? (() => {
+          const condition = draftItinerary.weather.condition.toLowerCase();
+          if (condition.includes("rain") || condition.includes("storm")) {
+            return "Rainy right now — indoor options are likely more comfortable.";
+          }
+          if (draftItinerary.weather.tempMax >= 30) {
+            return "Warm conditions today — prioritise venues with AC or shade.";
+          }
+          if (draftItinerary.weather.tempMin <= 8) {
+            return "Cool conditions today — warm indoor spaces may feel better.";
+          }
+          return undefined;
+        })()
+      : undefined);
 
   useEffect(() => {
     setDraftItinerary(itinerary);
@@ -251,7 +287,56 @@ export default function ItineraryView({
     setActiveMapSectionId(itinerary.sections[0]?.id ?? null);
     setTransportOrigin(itinerary.fromSuburb ?? "");
     setTransportDate(itinerary.visitDate ?? "");
+    setLiveState(itinerary.venueData.liveState ?? null);
   }, [itinerary]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadLiveState = async () => {
+      if (!venue.url) return;
+
+      setLiveStateLoading(true);
+      try {
+        const res = await fetch(`/api/live-state?venueUrl=${encodeURIComponent(venue.url)}`, {
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to load live venue state");
+        }
+
+        const payload = (await res.json()) as {
+          liveState: LiveVenueState | null;
+          unavailable?: boolean;
+        };
+
+        if (!active) return;
+        setLiveState(payload.liveState);
+        setLiveStateUnavailable(Boolean(payload.unavailable));
+      } catch {
+        if (!active) return;
+        setLiveStateUnavailable(true);
+      } finally {
+        if (active) setLiveStateLoading(false);
+      }
+    };
+
+    void loadLiveState();
+    const poller = window.setInterval(() => {
+      void loadLiveState();
+    }, 15 * 60 * 1000);
+
+    return () => {
+      active = false;
+      window.clearInterval(poller);
+    };
+  }, [venue.url]);
 
   useEffect(() => {
     if (!canManageCollaborators) return;
@@ -480,6 +565,9 @@ export default function ItineraryView({
         liveUpdates:
           (data.venueData?.liveUpdates as string[] | undefined) ??
           draftItinerary.venueData.liveUpdates,
+        liveState:
+          (data.venueData?.liveState as Itinerary["venueData"]["liveState"]) ??
+          draftItinerary.venueData.liveState,
         externalInsights:
           (data.venueData?.externalInsights as Itinerary["venueData"]["externalInsights"]) ??
           draftItinerary.venueData.externalInsights,
@@ -729,6 +817,68 @@ export default function ItineraryView({
             )}
           </div>
         </div>
+
+        <Card className="mt-4 border-sage-100">
+          <CardHeader>
+            <CardTitle className="text-base">🔴 Live venue status</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-3">
+            {liveStateLoading ? (
+              <p className="text-sm text-sage-500">Checking latest venue conditions…</p>
+            ) : liveState ? (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs rounded-full bg-sage-100 text-sage-700 px-2.5 py-1">
+                    Busyness: {describeBusyness(liveState.busynessLevel)}
+                  </span>
+                  <span className="text-xs rounded-full bg-calm-100 text-calm-700 px-2.5 py-1">
+                    Status: {liveState.openStatus === "closes_soon" ? "Closes soon" : liveState.openStatus.replace("_", " ")}
+                  </span>
+                  <span className="text-xs rounded-full bg-warm-100 text-warm-700 px-2.5 py-1">
+                    Confidence {liveState.confidence}%
+                  </span>
+                </div>
+
+                <div>
+                  <div className="h-2 rounded-full bg-sage-100 overflow-hidden">
+                    <div
+                      className="h-full bg-sage-500 transition-[width] duration-300"
+                      style={{ width: `${busynessPercent(liveState.busynessLevel)}%` }}
+                      aria-label={`Live busyness ${describeBusyness(liveState.busynessLevel)}`}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-sage-500">
+                    Updated {new Date(liveState.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
+
+                {nextChangeCountdown && (
+                  <p className="text-sm text-sage-700">
+                    {liveState.openStatus === "open" || liveState.openStatus === "closes_soon"
+                      ? `Closes in ${nextChangeCountdown}`
+                      : `Reopens in ${nextChangeCountdown}`}
+                  </p>
+                )}
+
+                {liveState.specialClosureNote && (
+                  <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+                    {liveState.specialClosureNote}
+                  </p>
+                )}
+
+                {liveWeatherSuggestion && (
+                  <p className="text-sm text-sage-700 bg-lavender-50 border border-lavender-100 rounded-xl px-3 py-2">
+                    {liveWeatherSuggestion}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-sage-500">
+                Live status not available yet{liveStateUnavailable ? " in this environment" : ""}.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Quick-glance tags */}
         <div className="flex flex-wrap gap-2 mt-4">

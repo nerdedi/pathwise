@@ -1,8 +1,10 @@
 import { crawlVenueSite, scrapeVenueUrl } from "@/lib/firecrawl";
 import { generateJson } from "@/lib/gemini";
 import { fetchGooglePlaceInsights } from "@/lib/google-places";
+import { deriveLiveVenueState } from "@/lib/live-state";
 import { logError } from "@/lib/logger";
 import { VENUE_EXTRACTION_SYSTEM_PROMPT } from "@/lib/prompts";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -38,6 +40,14 @@ function buildFallbackVenueData(url: string, reason: string) {
       googleQueriesTried: [],
       liveUpdatesSyncedAt: new Date().toISOString(),
     },
+    liveState: {
+      busynessLevel: "moderate",
+      openStatus: "closed",
+      updatedAt: new Date().toISOString(),
+      source: "derived",
+      confidence: 35,
+      weatherRecommendation: "Live weather-aware suggestions are unavailable in local mode.",
+    },
   };
 }
 
@@ -52,6 +62,13 @@ function isRecoverableScrapeError(error: unknown) {
     message.includes("tokens per minute") ||
     message.includes("rate limit")
   );
+}
+
+function isMissingLiveStateInfra(error: unknown) {
+  const code = (error as { code?: string } | undefined)?.code;
+  const message = String((error as { message?: string } | undefined)?.message ?? "").toLowerCase();
+
+  return code === "42P01" || code === "42703" || message.includes("venue_live_state");
 }
 
 function collectEstimatedFieldPaths(value: unknown, basePath = ""): string[] {
@@ -100,6 +117,48 @@ function extractSiteUpdates(markdown: string) {
   return Array.from(new Set(updates));
 }
 
+async function persistLiveVenueState(snapshot: {
+  venueUrl: string;
+  venueName?: string;
+  busynessLevel: string;
+  openStatus: string;
+  nextChangeAt?: string;
+  weatherCondition?: string;
+  temperatureC?: number;
+  weatherRecommendation?: string;
+  source: string;
+  confidence: number;
+  specialClosureNote?: string;
+  updatedAt: string;
+}) {
+  const admin = createAdminClient();
+  if (!admin) return;
+
+  const { error } = await admin
+    .from("venue_live_state")
+    .upsert(
+      {
+        venue_url: snapshot.venueUrl,
+        venue_name: snapshot.venueName,
+        busyness_level: snapshot.busynessLevel,
+        open_status: snapshot.openStatus,
+        next_change_at: snapshot.nextChangeAt,
+        weather_condition: snapshot.weatherCondition,
+        temperature_c: snapshot.temperatureC,
+        weather_recommendation: snapshot.weatherRecommendation,
+        source: snapshot.source,
+        confidence: snapshot.confidence,
+        special_closure_note: snapshot.specialClosureNote,
+        updated_at: snapshot.updatedAt,
+      },
+      { onConflict: "venue_url" }
+    );
+
+  if (error && !isMissingLiveStateInfra(error)) {
+    logError("/api/scrape live-state upsert", error);
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -139,6 +198,18 @@ export async function POST(req: NextRequest) {
     }
 
     const liveUpdates = extractSiteUpdates(combinedContent);
+    const weatherCondition = liveUpdates.find((line) =>
+      /rain|storm|heat|cold|snow|wind/i.test(line)
+    );
+    const liveState = deriveLiveVenueState({
+      venueData: {
+        ...(venueData as Record<string, unknown>),
+        liveUpdates,
+      } as never,
+      providerOpenNow: googleInsights?.openNow,
+      weather: weatherCondition ? { condition: weatherCondition } : undefined,
+      source: googleInsights?.openNow === undefined ? "derived" : "provider",
+    });
     const estimatedFieldPaths = Array.from(
       new Set(collectEstimatedFieldPaths(venueData).slice(0, 40))
     );
@@ -161,7 +232,22 @@ export async function POST(req: NextRequest) {
         googleQueriesTried: Array.from(new Set(queryCandidates)).slice(0, 5),
         liveUpdatesSyncedAt: new Date().toISOString(),
       },
+      liveState,
     };
+
+    await persistLiveVenueState({
+      venueUrl: url,
+      venueName: String(venueData.name ?? ""),
+      busynessLevel: liveState.busynessLevel,
+      openStatus: liveState.openStatus,
+      nextChangeAt: liveState.nextChangeAt,
+      weatherCondition,
+      weatherRecommendation: liveState.weatherRecommendation,
+      source: liveState.source,
+      confidence: liveState.confidence,
+      specialClosureNote: liveState.specialClosureNote,
+      updatedAt: liveState.updatedAt,
+    });
 
     return NextResponse.json({ venueData: enrichedVenueData });
   } catch (err) {

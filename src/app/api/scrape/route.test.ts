@@ -21,6 +21,10 @@ vi.mock("@/lib/logger", () => ({
   logError: vi.fn(),
 }));
 
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: vi.fn(() => null),
+}));
+
 import { POST } from "./route";
 
 beforeEach(() => {
@@ -70,6 +74,7 @@ describe("scrape route", () => {
     const payload = (await response.json()) as {
       venueData: {
         liveUpdates: string[];
+        liveState: { busynessLevel: string; openStatus: string; updatedAt: string };
         sourceMeta: {
           sitePagesScanned: number;
           hasGoogleInsights: boolean;
@@ -87,6 +92,9 @@ describe("scrape route", () => {
     expect(payload.venueData.sourceMeta.estimatedFieldPaths).toContain("accessibility.notes");
     expect(payload.venueData.sourceMeta.updatedAt).toBeTypeOf("string");
     expect(payload.venueData.externalInsights.source).toBe("google-places");
+    expect(payload.venueData.liveState.busynessLevel).toBeTruthy();
+    expect(payload.venueData.liveState.openStatus).toBeTruthy();
+    expect(payload.venueData.liveState.updatedAt).toBeTypeOf("string");
   });
 
   it("falls back to single-page scrape when crawl fails", async () => {
@@ -115,12 +123,14 @@ describe("scrape route", () => {
     expect(response.status).toBe(200);
     const payload = (await response.json()) as {
       venueData: {
+        liveState: { source: string };
         sourceMeta: { sitePagesScanned: number; hasGoogleInsights: boolean };
       };
     };
 
     expect(payload.venueData.sourceMeta.sitePagesScanned).toBe(1);
     expect(payload.venueData.sourceMeta.hasGoogleInsights).toBe(false);
+    expect(payload.venueData.liveState.source).toBe("derived");
   });
 
   it("returns 400 for invalid URL input", async () => {
@@ -168,6 +178,7 @@ describe("scrape route", () => {
       venueData: {
         name: string;
         liveUpdates: string[];
+        liveState: { source: string; confidence: number };
         sourceMeta: {
           fallbackReason: string;
           hasGoogleInsights: boolean;
@@ -177,6 +188,8 @@ describe("scrape route", () => {
 
     expect(payload.venueData.name).toBe("example.com");
     expect(payload.venueData.liveUpdates[0]).toContain("local mode");
+    expect(payload.venueData.liveState.source).toBe("derived");
+    expect(payload.venueData.liveState.confidence).toBeLessThanOrEqual(40);
     expect(payload.venueData.sourceMeta.fallbackReason).toContain("Missing local API keys");
     expect(payload.venueData.sourceMeta.hasGoogleInsights).toBe(false);
     expect(vi.mocked(logError)).not.toHaveBeenCalled();

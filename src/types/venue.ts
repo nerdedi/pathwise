@@ -71,6 +71,20 @@ export interface Cafeteria {
   canBringOwnFood?: boolean;
 }
 
+export type LiveBusynessLevel = "quiet" | "moderate" | "busy" | "very_busy";
+export type LiveOpenStatus = "open" | "closes_soon" | "closed" | "special_closure";
+
+export interface LiveVenueState {
+  busynessLevel: LiveBusynessLevel;
+  openStatus: LiveOpenStatus;
+  nextChangeAt?: string;
+  updatedAt: string;
+  source: "derived" | "provider" | "community";
+  confidence: number;
+  specialClosureNote?: string;
+  weatherRecommendation?: string;
+}
+
 export interface VenueData {
   // Basic info
   name: string;
@@ -151,6 +165,7 @@ export interface VenueData {
     googleQueriesTried?: string[];
     liveUpdatesSyncedAt?: string;
   };
+  liveState?: LiveVenueState;
 
   scrapedAt: string;
 }
