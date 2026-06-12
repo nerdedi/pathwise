@@ -1,6 +1,7 @@
 import { crawlVenueSite, scrapeVenueUrl } from "@/lib/firecrawl";
 import { generateJson } from "@/lib/gemini";
 import { fetchGooglePlaceInsights } from "@/lib/google-places";
+import { detectLiveVenueEvent } from "@/lib/live-events";
 import { deriveLiveVenueState } from "@/lib/live-state";
 import { logError } from "@/lib/logger";
 import { VENUE_EXTRACTION_SYSTEM_PROMPT } from "@/lib/prompts";
@@ -68,7 +69,14 @@ function isMissingLiveStateInfra(error: unknown) {
   const code = (error as { code?: string } | undefined)?.code;
   const message = String((error as { message?: string } | undefined)?.message ?? "").toLowerCase();
 
-  return code === "42P01" || code === "42703" || message.includes("venue_live_state");
+  return (
+    code === "42P01" ||
+    code === "42703" ||
+    message.includes("venue_live_state") ||
+    message.includes("venue_live_events") ||
+    message.includes("user_saved_venues") ||
+    message.includes("user_notifications")
+  );
 }
 
 function collectEstimatedFieldPaths(value: unknown, basePath = ""): string[] {
@@ -134,6 +142,18 @@ async function persistLiveVenueState(snapshot: {
   const admin = createAdminClient();
   if (!admin) return;
 
+  const { data: previousRow, error: previousError } = await admin
+    .from("venue_live_state")
+    .select(
+      "busyness_level, open_status, next_change_at, weather_recommendation, special_closure_note"
+    )
+    .eq("venue_url", snapshot.venueUrl)
+    .maybeSingle();
+
+  if (previousError && !isMissingLiveStateInfra(previousError)) {
+    logError("/api/scrape live-state select", previousError);
+  }
+
   const { error } = await admin
     .from("venue_live_state")
     .upsert(
@@ -156,6 +176,91 @@ async function persistLiveVenueState(snapshot: {
 
   if (error && !isMissingLiveStateInfra(error)) {
     logError("/api/scrape live-state upsert", error);
+    return;
+  }
+
+  if (error && isMissingLiveStateInfra(error)) {
+    return;
+  }
+
+  const event = detectLiveVenueEvent(
+    previousRow
+      ? {
+          busynessLevel: previousRow.busyness_level,
+          openStatus: previousRow.open_status,
+          nextChangeAt: previousRow.next_change_at,
+          weatherRecommendation: previousRow.weather_recommendation,
+          specialClosureNote: previousRow.special_closure_note,
+        }
+      : null,
+    {
+      busynessLevel: snapshot.busynessLevel as never,
+      openStatus: snapshot.openStatus as never,
+      nextChangeAt: snapshot.nextChangeAt,
+      weatherRecommendation: snapshot.weatherRecommendation,
+      specialClosureNote: snapshot.specialClosureNote,
+    }
+  );
+
+  if (!event) return;
+
+  const { data: eventRow, error: eventInsertError } = await admin
+    .from("venue_live_events")
+    .insert({
+      venue_url: snapshot.venueUrl,
+      venue_name: snapshot.venueName,
+      event_type: event.eventType,
+      title: event.title,
+      body: event.body,
+      payload: event.payload,
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (eventInsertError) {
+    if (!isMissingLiveStateInfra(eventInsertError)) {
+      logError("/api/scrape live-event insert", eventInsertError);
+    }
+    return;
+  }
+
+  const subscribersBuilder = admin
+    .from("user_saved_venues")
+    .select("user_id")
+    .eq("venue_url", snapshot.venueUrl)
+    .eq("notifications_enabled", true);
+
+  const { data: subscribers, error: subscribersError } = await subscribersBuilder;
+
+  if (subscribersError) {
+    if (!isMissingLiveStateInfra(subscribersError)) {
+      logError("/api/scrape live-event subscribers", subscribersError);
+    }
+    return;
+  }
+
+  if (!subscribers || subscribers.length === 0) return;
+
+  const notificationRows = subscribers.map((subscriber) => ({
+    user_id: subscriber.user_id,
+    notification_type: `live_${event.eventType}`,
+    title: event.title,
+    body: snapshot.venueName ? `${snapshot.venueName}: ${event.body}` : event.body,
+    metadata: {
+      venueUrl: snapshot.venueUrl,
+      venueName: snapshot.venueName,
+      eventType: event.eventType,
+      eventId: eventRow?.id,
+      ...event.payload,
+    },
+  }));
+
+  const { error: notificationsError } = await admin
+    .from("user_notifications")
+    .insert(notificationRows);
+
+  if (notificationsError && !isMissingLiveStateInfra(notificationsError)) {
+    logError("/api/scrape live-event notifications", notificationsError);
   }
 }
 

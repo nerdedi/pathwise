@@ -12,6 +12,10 @@ import { getWeatherPackingTips } from "@/lib/weather";
 import type { CollaborationRole, Itinerary } from "@/types/itinerary";
 import type { LiveVenueState } from "@/types/venue";
 import {
+    Bell,
+    BellOff,
+    Bookmark,
+    BookmarkCheck,
     BookOpen,
     ChevronDown,
     ChevronUp,
@@ -239,6 +243,10 @@ export default function ItineraryView({
   );
   const [liveStateLoading, setLiveStateLoading] = useState(false);
   const [liveStateUnavailable, setLiveStateUnavailable] = useState(false);
+  const [savedVenueLoading, setSavedVenueLoading] = useState(false);
+  const [isVenueSaved, setIsVenueSaved] = useState(false);
+  const [venueNotificationsEnabled, setVenueNotificationsEnabled] = useState(true);
+  const [savedVenueApiUnavailable, setSavedVenueApiUnavailable] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
 
   const venue = draftItinerary.venueData;
@@ -294,6 +302,55 @@ export default function ItineraryView({
     const timer = window.setInterval(() => setClockNow(Date.now()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSavedVenueState = async () => {
+      if (!venue.url) return;
+
+      setSavedVenueLoading(true);
+      try {
+        const res = await fetch("/api/saved-venues", { cache: "no-store" });
+        if (res.status === 401) {
+          if (!active) return;
+          setSavedVenueApiUnavailable(false);
+          setIsVenueSaved(false);
+          setVenueNotificationsEnabled(true);
+          return;
+        }
+
+        if (!res.ok) {
+          throw new Error("Failed to load saved venue state");
+        }
+
+        const payload = (await res.json()) as {
+          savedVenues: Array<{
+            venueUrl: string;
+            notificationsEnabled: boolean;
+          }>;
+        };
+
+        if (!active) return;
+
+        const match = payload.savedVenues.find((item) => item.venueUrl === venue.url);
+        setIsVenueSaved(Boolean(match));
+        setVenueNotificationsEnabled(match?.notificationsEnabled ?? true);
+        setSavedVenueApiUnavailable(false);
+      } catch {
+        if (!active) return;
+        setSavedVenueApiUnavailable(true);
+      } finally {
+        if (active) setSavedVenueLoading(false);
+      }
+    };
+
+    void loadSavedVenueState();
+
+    return () => {
+      active = false;
+    };
+  }, [venue.url]);
 
   useEffect(() => {
     let active = true;
@@ -641,6 +698,97 @@ export default function ItineraryView({
     }
   };
 
+  const toggleSaveVenue = async () => {
+    if (!venue.url) return;
+
+    setSavedVenueLoading(true);
+    try {
+      if (isVenueSaved) {
+        const res = await fetch("/api/saved-venues", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ venueUrl: venue.url }),
+        });
+
+        if (res.status === 401) {
+          setSaveMessage("Sign in to manage saved venues.");
+          return;
+        }
+
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({}));
+          throw new Error(payload.error ?? "Failed to remove saved venue");
+        }
+
+        setIsVenueSaved(false);
+        setSaveMessage("Venue removed from saved list.");
+        return;
+      }
+
+      const res = await fetch("/api/saved-venues", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          venueUrl: venue.url,
+          venueName: venue.name,
+          notificationsEnabled: true,
+        }),
+      });
+
+      if (res.status === 401) {
+        setSaveMessage("Sign in to save venues and get live alerts.");
+        return;
+      }
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error ?? "Failed to save venue");
+      }
+
+      setIsVenueSaved(true);
+      setVenueNotificationsEnabled(true);
+      setSaveMessage("Venue saved. Live notifications enabled.");
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : "Failed to update saved venue.");
+    } finally {
+      setSavedVenueLoading(false);
+    }
+  };
+
+  const toggleSavedVenueNotifications = async () => {
+    if (!venue.url || !isVenueSaved) return;
+
+    setSavedVenueLoading(true);
+    try {
+      const next = !venueNotificationsEnabled;
+      const res = await fetch("/api/saved-venues", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          venueUrl: venue.url,
+          notificationsEnabled: next,
+        }),
+      });
+
+      if (res.status === 401) {
+        setSaveMessage("Sign in to change notification preferences.");
+        return;
+      }
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error ?? "Failed to update notifications");
+      }
+
+      setVenueNotificationsEnabled(next);
+      setSaveMessage(next ? "Live notifications enabled." : "Live notifications paused.");
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : "Failed to update notifications.");
+    } finally {
+      setSavedVenueLoading(false);
+    }
+  };
+
   useEffect(() => {
     void loadCommunity();
   }, [loadCommunity]);
@@ -823,6 +971,45 @@ export default function ItineraryView({
             <CardTitle className="text-base">🔴 Live venue status</CardTitle>
           </CardHeader>
           <CardContent className="pt-0 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => {
+                  void toggleSaveVenue();
+                }}
+                disabled={savedVenueLoading || savedVenueApiUnavailable}
+              >
+                {savedVenueLoading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : isVenueSaved ? (
+                  <BookmarkCheck className="w-3.5 h-3.5" />
+                ) : (
+                  <Bookmark className="w-3.5 h-3.5" />
+                )}
+                {isVenueSaved ? "Saved venue" : "Save venue"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => {
+                  void toggleSavedVenueNotifications();
+                }}
+                disabled={savedVenueLoading || !isVenueSaved || savedVenueApiUnavailable}
+              >
+                {venueNotificationsEnabled ? (
+                  <Bell className="w-3.5 h-3.5" />
+                ) : (
+                  <BellOff className="w-3.5 h-3.5" />
+                )}
+                {venueNotificationsEnabled ? "Notifications on" : "Notifications off"}
+              </Button>
+            </div>
+
             {liveStateLoading ? (
               <p className="text-sm text-sage-500">Checking latest venue conditions…</p>
             ) : liveState ? (
@@ -875,6 +1062,11 @@ export default function ItineraryView({
             ) : (
               <p className="text-sm text-sage-500">
                 Live status not available yet{liveStateUnavailable ? " in this environment" : ""}.
+              </p>
+            )}
+            {savedVenueApiUnavailable && (
+              <p className="text-xs text-sage-500">
+                Saved venue subscriptions are unavailable in this environment right now.
               </p>
             )}
           </CardContent>
