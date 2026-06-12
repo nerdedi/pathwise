@@ -376,6 +376,7 @@ export default function GuidesPage() {
     const haystack = `${guide.venue_name} ${guide.venue_suburb ?? ""}`.toLowerCase();
     return haystack.includes(query.toLowerCase().trim());
   });
+  const unreadNotificationCount = notifications.filter((item) => !item.readAt).length;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sage-50 to-white">
@@ -387,6 +388,20 @@ export default function GuidesPage() {
           Pathwise
         </Link>
         <div className="flex items-center gap-2">
+          {userEmail && (
+            <a
+              href="#notifications"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-sage-600 hover:bg-sage-50 hover:text-sage-800"
+            >
+              <Bell className="h-3.5 w-3.5" />
+              Updates
+              {unreadNotificationCount > 0 && (
+                <span className="rounded-full bg-calm-100 px-1.5 py-0.5 text-[11px] font-semibold text-calm-700">
+                  {unreadNotificationCount}
+                </span>
+              )}
+            </a>
+          )}
           <Link href="/plan" className="text-sm text-sage-600 hover:text-sage-800">
             New guide
           </Link>
@@ -524,6 +539,11 @@ export default function GuidesPage() {
                   </h2>
                   <p className="text-sm text-sage-600 mt-1">
                     Updates about saved venues, status changes, and special closures.
+                  </p>
+                  <p className="mt-1 text-xs text-sage-500" aria-live="polite">
+                    {unreadNotificationCount > 0
+                      ? `${unreadNotificationCount} unread notification${unreadNotificationCount === 1 ? "" : "s"}`
+                      : "All notifications are read"}
                   </p>
                 </div>
                 <Button
