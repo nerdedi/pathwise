@@ -1,0 +1,17 @@
+{
+  // Declare extensions that are useful for this TypeScript/Next.js project.
+  // The "unwanted" list prevents the Copilot cloud-agent runner from loading
+  // C# / Roslyn extensions that have no purpose here and caused runaway memory
+  // consumption by repeatedly respawning the Roslyn language server.
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss"
+  ],
+  "unwantedRecommendations": [
+    "ms-dotnettools.csharp",
+    "ms-dotnettools.csdevkit",
+    "ms-dotnettools.vscode-dotnet-runtime",
+    "ms-dotnettools.dotnet-interactive-vscode"
+  ]
+}
