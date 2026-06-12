@@ -33,6 +33,12 @@ const UpdateGuideSchema = z.object({
     .passthrough(),
 });
 
+function resolveSafetyTrigger(issues: string[]) {
+  return issues.some((issue) => issue.toLowerCase().includes("copyright"))
+    ? "copyright"
+    : "unsafe";
+}
+
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
@@ -175,9 +181,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
     }
 
     if (!sanitizedSocialStory.safety.ok) {
+      const trigger = resolveSafetyTrigger(sanitizedSocialStory.safety.issues);
       recordModerationEvent({
         route: "/api/guides/:id PUT",
-        trigger: "unsafe",
+        trigger,
         panelCount: itineraryData.socialStory?.length ?? 0,
         issuesCount: sanitizedSocialStory.safety.issues.length,
       });

@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { recordModerationEvent } from "@/lib/moderation-telemetry";
 import { createClient } from "@/lib/supabase/server";
 import type { Itinerary } from "@/types/itinerary";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +10,10 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: vi.fn(),
+}));
+
+vi.mock("@/lib/moderation-telemetry", () => ({
+  recordModerationEvent: vi.fn(),
 }));
 
 import { DELETE, GET, PUT } from "./route";
@@ -349,6 +354,46 @@ describe("guide detail route", () => {
     const payload = (await response.json()) as { error: string; issues: string[] };
     expect(payload.error).toContain("unsupported image sources");
     expect(payload.issues[0]).toContain("image source is not allowed");
+    expect(vi.mocked(recordModerationEvent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        route: "/api/guides/:id PUT",
+        trigger: "image-source",
+      })
+    );
+  });
+
+  it("records copyright moderation trigger when social-story includes trademark-risk text", async () => {
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "owner@example.com" } } }) },
+      from: vi.fn(),
+    } as never);
+
+    const itinerary = makeItinerary({
+      socialStory: [
+        {
+          sequence: 1,
+          title: "Arrival with Disney character",
+          text: "I arrive calmly.",
+        },
+      ],
+    });
+
+    const response = await PUT(
+      new Request("http://localhost", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itinerary }),
+      }) as never,
+      { params: Promise.resolve({ id: itinerary.id }) }
+    );
+
+    expect(response.status).toBe(400);
+    expect(vi.mocked(recordModerationEvent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        route: "/api/guides/:id PUT",
+        trigger: "copyright",
+      })
+    );
   });
 
   it("accepts PUT when social-story uses safe data URL image", async () => {

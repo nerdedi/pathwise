@@ -112,10 +112,11 @@ function sanitizeOutput(value: {
         imagePrompt: "Simple calm illustration of a person taking one gentle next step",
       },
       moderated: true,
+      trigger: hasCopyrightRisk ? "copyright" as const : "unsafe" as const,
     };
   }
 
-  return { panel: sanitized, moderated: false };
+  return { panel: sanitized, moderated: false, trigger: undefined };
 }
 
 export async function POST(req: NextRequest) {
@@ -180,7 +181,7 @@ Improve this panel while preserving intent. Return JSON only.
     if (sanitizedResult.moderated) {
       recordModerationEvent({
         route: "/api/social-story/assist",
-        trigger: "unsafe",
+        trigger: sanitizedResult.trigger ?? "unsafe",
       });
     }
 

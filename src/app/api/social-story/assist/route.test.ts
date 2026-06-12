@@ -1,8 +1,13 @@
 import { generateJson } from "@/lib/gemini";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { recordModerationEvent } from "@/lib/moderation-telemetry";
 
 vi.mock("@/lib/gemini", () => ({
   generateJson: vi.fn(),
+}));
+
+vi.mock("@/lib/moderation-telemetry", () => ({
+  recordModerationEvent: vi.fn(),
 }));
 
 import { __resetAssistRateLimitForTests, POST } from "./route";
@@ -120,6 +125,12 @@ describe("social story assist route", () => {
     const payload = (await response.json()) as { panel: { title: string; text: string } };
     expect(payload.panel.title).toBe("Calm next step");
     expect(payload.panel.text).toContain("safe");
+    expect(vi.mocked(recordModerationEvent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        route: "/api/social-story/assist",
+        trigger: "copyright",
+      })
+    );
   });
 
   it("returns 429 when assist request rate limit is exceeded", async () => {
@@ -148,6 +159,12 @@ describe("social story assist route", () => {
     }
 
     expect(status).toBe(429);
+    expect(vi.mocked(recordModerationEvent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        route: "/api/social-story/assist",
+        trigger: "rate-limit",
+      })
+    );
   });
 
   it("returns 400 for invalid payload", async () => {
