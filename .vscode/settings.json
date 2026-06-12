@@ -4,17 +4,21 @@
   // Roslyn was repeatedly respawning inside the Copilot cloud-agent runner
   // and consuming available memory (down to ~1 GB), causing extension-host
   // instability and eventually killing VS Code process flows.
-  "dotnet.server.useOmnisharp": true,
+  //
+  // `false` keeps the setting at its default (off) if the extension somehow
+  // loads; coupled with the extensions.json unwantedRecommendations list and
+  // the copilot-setup-steps.yml --disable-extensions wrapper, this provides
+  // defence-in-depth against Roslyn auto-starting.
+  "dotnet.server.useOmnisharp": false,
   "omnisharp.enableRoslynAnalyzers": false,
   "omnisharp.enableEditorConfigSupport": false,
-  "omnisharp.enableMsBuildLoadProjectsOnDemand": true,
+  "omnisharp.enableMsBuildLoadProjectsOnDemand": false,
   "csharp.semanticHighlighting.enabled": false,
   "dotnet.backgroundAnalysis.analyzerDiagnosticsScope": "none",
   "dotnet.backgroundAnalysis.compilerDiagnosticsScope": "none",
 
-  // Disable language servers / watchers for languages not used in this project
-  // to keep memory overhead low in constrained Copilot agent environments.
-  "typescript.tsserver.maxTsServerMemory": 512,
+  // Keep TypeScript server memory reasonable for a Next.js codebase.
   "typescript.preferences.includePackageJsonAutoImports": "off",
   "extensions.ignoreRecommendations": false
 }
+
