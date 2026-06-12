@@ -1,3 +1,5 @@
+import { fetchWithTimeout, parseTimeoutFromEnv } from "@/lib/timeout";
+
 type GooglePlacesTextSearchResponse = {
   places?: Array<{
     displayName?: { text?: string };
@@ -9,6 +11,11 @@ type GooglePlacesTextSearchResponse = {
     priceLevel?: string;
   }>;
 };
+
+const GOOGLE_PLACES_REQUEST_TIMEOUT_MS = parseTimeoutFromEnv(
+  "GOOGLE_PLACES_REQUEST_TIMEOUT_MS",
+  8_000
+);
 
 export interface GooglePlaceInsights {
   source: "google-places";
@@ -28,7 +35,9 @@ export async function fetchGooglePlaceInsights(query: string): Promise<GooglePla
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey || !query.trim()) return null;
 
-  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+  const res = await fetchWithTimeout("https://places.googleapis.com/v1/places:searchText", {
+    operation: "Google Places search",
+    timeoutMs: GOOGLE_PLACES_REQUEST_TIMEOUT_MS,
     method: "POST",
     headers: {
       "Content-Type": "application/json",

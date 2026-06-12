@@ -2,6 +2,8 @@
  * Firecrawl — scrapes a venue URL and returns structured markdown + metadata.
  * Docs: https://docs.firecrawl.dev
  */
+import { fetchWithTimeout, parseTimeoutFromEnv } from "@/lib/timeout";
+
 export interface FirecrawlResult {
   markdown: string;
   metadata: {
@@ -36,6 +38,11 @@ const LINK_KEYWORDS = [
   "news",
   "events",
 ];
+
+const FIRECRAWL_REQUEST_TIMEOUT_MS = parseTimeoutFromEnv(
+  "FIRECRAWL_REQUEST_TIMEOUT_MS",
+  20_000
+);
 
 function normalizeUrl(baseUrl: string, maybeRelative: string) {
   try {
@@ -76,7 +83,9 @@ export async function scrapeVenueUrl(url: string): Promise<FirecrawlResult> {
     throw new Error("FIRECRAWL_API_KEY is not set");
   }
 
-  const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
+  const res = await fetchWithTimeout("https://api.firecrawl.dev/v1/scrape", {
+    operation: "Firecrawl scrape",
+    timeoutMs: FIRECRAWL_REQUEST_TIMEOUT_MS,
     method: "POST",
     headers: {
       "Content-Type": "application/json",

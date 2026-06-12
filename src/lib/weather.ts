@@ -2,6 +2,7 @@
  * Weather data via Open-Meteo (free, no API key needed, Australian-accurate)
  * https://open-meteo.com/
  */
+import { fetchWithTimeout, parseTimeoutFromEnv } from "@/lib/timeout";
 
 export interface WeatherDay {
   date: string;
@@ -33,6 +34,11 @@ const WMO_CODES: Record<number, string> = {
   99: "Thunderstorm with hail",
 };
 
+const WEATHER_REQUEST_TIMEOUT_MS = parseTimeoutFromEnv(
+  "WEATHER_REQUEST_TIMEOUT_MS",
+  8_000
+);
+
 export async function getWeatherForecast(
   lat: number,
   lng: number,
@@ -56,9 +62,13 @@ export async function getWeatherForecast(
     forecast_days: daysAhead.toString(),
   });
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `https://api.open-meteo.com/v1/forecast?${params}`,
-    { next: { revalidate: 3600 } } // cache 1 hour
+    {
+      operation: "Open-Meteo forecast",
+      timeoutMs: WEATHER_REQUEST_TIMEOUT_MS,
+      next: { revalidate: 3600 },
+    } // cache 1 hour
   );
 
   if (!res.ok) throw new Error(`Weather API error ${res.status}`);

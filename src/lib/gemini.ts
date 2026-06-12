@@ -1,3 +1,4 @@
+import { parseTimeoutFromEnv, withTimeout } from "@/lib/timeout";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
 
@@ -9,6 +10,7 @@ import OpenAI from "openai";
 
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 const GEMINI_MODEL = "gemini-2.0-flash";
+const AI_REQUEST_TIMEOUT_MS = parseTimeoutFromEnv("AI_REQUEST_TIMEOUT_MS", 30_000);
 
 async function generateJsonGroq(
   systemPrompt: string,
@@ -68,8 +70,43 @@ export async function generateJson(
   systemPrompt: string,
   userMessage: string
 ): Promise<unknown> {
-  if (process.env.GROQ_API_KEY) {
-    return generateJsonGroq(systemPrompt, userMessage);
+  const hasGroq = Boolean(process.env.GROQ_API_KEY?.trim());
+  const hasGemini = Boolean(process.env.GOOGLE_AI_API_KEY?.trim());
+
+  let primaryError: unknown;
+
+  if (hasGroq) {
+    try {
+      return await withTimeout(
+        "Groq generation",
+        AI_REQUEST_TIMEOUT_MS,
+        generateJsonGroq(systemPrompt, userMessage)
+      );
+    } catch (error) {
+      primaryError = error;
+      if (!hasGemini) throw error;
+    }
   }
-  return generateJsonGemini(systemPrompt, userMessage);
+
+  if (hasGemini) {
+    try {
+      return await withTimeout(
+        "Gemini generation",
+        AI_REQUEST_TIMEOUT_MS,
+        generateJsonGemini(systemPrompt, userMessage)
+      );
+    } catch (error) {
+      if (primaryError) {
+        throw new Error(
+          `AI generation failed on both providers: ${(primaryError as Error).message}; ${(error as Error).message}`
+        );
+      }
+      throw error;
+    }
+  }
+
+  throw new Error(
+    "No AI API key found. Set GROQ_API_KEY (free at https://console.groq.com) " +
+      "or GOOGLE_AI_API_KEY (free at https://aistudio.google.com/apikey)."
+  );
 }

@@ -3,8 +3,13 @@
  * Register at: https://opendata.transport.nsw.gov.au/
  * Documentation: https://opendata.transport.nsw.gov.au/dataset/trip-planner-apis
  */
+import { fetchWithTimeout, parseTimeoutFromEnv } from "@/lib/timeout";
 
 const TRANSPORT_NSW_BASE = "https://api.transport.nsw.gov.au/v1/tp";
+const TRANSPORT_NSW_REQUEST_TIMEOUT_MS = parseTimeoutFromEnv(
+  "TRANSPORT_NSW_REQUEST_TIMEOUT_MS",
+  10_000
+);
 
 type RoutePreference = "balanced" | "fastest" | "quietest";
 
@@ -203,7 +208,9 @@ export async function getTripPlan(
     wheelchair: req.wheelchairRequired ? "on" : "off",
   });
 
-  const res = await fetch(`${TRANSPORT_NSW_BASE}/trip?${params}`, {
+  const res = await fetchWithTimeout(`${TRANSPORT_NSW_BASE}/trip?${params}`, {
+    operation: "Transport NSW trip planning",
+    timeoutMs: TRANSPORT_NSW_REQUEST_TIMEOUT_MS,
     headers: { Authorization: `apikey ${apiKey}` },
   });
 
@@ -344,8 +351,13 @@ export async function estimateWalkFromStation(
 
   async function geocode(query: string) {
     const encoded = encodeURIComponent(query);
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?limit=1&access_token=${mapboxToken}`
+      ,
+      {
+        operation: "Mapbox geocoding",
+        timeoutMs: TRANSPORT_NSW_REQUEST_TIMEOUT_MS,
+      }
     );
 
     if (!response.ok) return null;
@@ -371,8 +383,13 @@ export async function estimateWalkFromStation(
       };
     }
 
-    const directionsResponse = await fetch(
+    const directionsResponse = await fetchWithTimeout(
       `https://api.mapbox.com/directions/v5/mapbox/walking/${from[0]},${from[1]};${to[0]},${to[1]}?overview=false&steps=false&access_token=${mapboxToken}`
+      ,
+      {
+        operation: "Mapbox walking directions",
+        timeoutMs: TRANSPORT_NSW_REQUEST_TIMEOUT_MS,
+      }
     );
 
     if (!directionsResponse.ok) {

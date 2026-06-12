@@ -6,8 +6,24 @@ import { deriveLiveVenueState } from "@/lib/live-state";
 import { logError } from "@/lib/logger";
 import { VENUE_EXTRACTION_SYSTEM_PROMPT } from "@/lib/prompts";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { parseTimeoutFromEnv, withTimeout } from "@/lib/timeout";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+
+export const maxDuration = 120;
+
+const SCRAPE_ROUTE_CRAWL_TIMEOUT_MS = parseTimeoutFromEnv(
+  "SCRAPE_ROUTE_CRAWL_TIMEOUT_MS",
+  25_000
+);
+const SCRAPE_ROUTE_SINGLE_PAGE_TIMEOUT_MS = parseTimeoutFromEnv(
+  "SCRAPE_ROUTE_SINGLE_PAGE_TIMEOUT_MS",
+  15_000
+);
+const SCRAPE_ROUTE_PERSIST_TIMEOUT_MS = parseTimeoutFromEnv(
+  "SCRAPE_ROUTE_PERSIST_TIMEOUT_MS",
+  2_500
+);
 
 const RequestSchema = z.object({
   url: z.string().url("Please provide a valid URL"),
@@ -61,7 +77,9 @@ function isRecoverableScrapeError(error: unknown) {
     message.includes("groq_api_key") ||
     message.includes("request too large") ||
     message.includes("tokens per minute") ||
-    message.includes("rate limit")
+    message.includes("rate limit") ||
+    message.includes("timed out") ||
+    message.includes("timeout")
   );
 }
 
@@ -273,10 +291,18 @@ export async function POST(req: NextRequest) {
     // 1. Crawl the venue site (up to 5 pages: main, visit, accessibility, café, contact)
     let pages;
     try {
-      pages = await crawlVenueSite(url, 5);
+      pages = await withTimeout(
+        "Venue crawl",
+        SCRAPE_ROUTE_CRAWL_TIMEOUT_MS,
+        crawlVenueSite(url, 5)
+      );
     } catch {
       // Fall back to single-page scrape if crawl fails
-      const single = await scrapeVenueUrl(url);
+      const single = await withTimeout(
+        "Single-page venue scrape",
+        SCRAPE_ROUTE_SINGLE_PAGE_TIMEOUT_MS,
+        scrapeVenueUrl(url)
+      );
       pages = [single];
     }
 
@@ -299,7 +325,11 @@ export async function POST(req: NextRequest) {
 
     let googleInsights = null;
     for (const candidate of Array.from(new Set(queryCandidates))) {
-      googleInsights = await fetchGooglePlaceInsights(candidate);
+      googleInsights = await withTimeout(
+        `Google Places enrichment for ${candidate}`,
+        4_500,
+        fetchGooglePlaceInsights(candidate)
+      ).catch(() => null);
       if (googleInsights) break;
     }
 
@@ -341,19 +371,23 @@ export async function POST(req: NextRequest) {
       liveState,
     };
 
-    await persistLiveVenueState({
-      venueUrl: url,
-      venueName: String(venueData.name ?? ""),
-      busynessLevel: liveState.busynessLevel,
-      openStatus: liveState.openStatus,
-      nextChangeAt: liveState.nextChangeAt,
-      weatherCondition,
-      weatherRecommendation: liveState.weatherRecommendation,
-      source: liveState.source,
-      confidence: liveState.confidence,
-      specialClosureNote: liveState.specialClosureNote,
-      updatedAt: liveState.updatedAt,
-    });
+    await withTimeout(
+      "Persist live venue state",
+      SCRAPE_ROUTE_PERSIST_TIMEOUT_MS,
+      persistLiveVenueState({
+        venueUrl: url,
+        venueName: String(venueData.name ?? ""),
+        busynessLevel: liveState.busynessLevel,
+        openStatus: liveState.openStatus,
+        nextChangeAt: liveState.nextChangeAt,
+        weatherCondition,
+        weatherRecommendation: liveState.weatherRecommendation,
+        source: liveState.source,
+        confidence: liveState.confidence,
+        specialClosureNote: liveState.specialClosureNote,
+        updatedAt: liveState.updatedAt,
+      })
+    ).catch(() => undefined);
 
     return NextResponse.json({ venueData: enrichedVenueData });
   } catch (err) {
