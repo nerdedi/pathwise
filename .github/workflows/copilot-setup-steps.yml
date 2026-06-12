@@ -1,0 +1,30 @@
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Setup VS Code CLI wrapper with extensions disabled
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.local/bin"
+
+          CODE_BIN="$(command -v code || true)"
+          if [[ -z "$CODE_BIN" ]]; then
+            echo "VS Code CLI not present, skipping wrapper setup."
+            exit 0
+          fi
+
+          printf '#!/usr/bin/env bash\nexec %q --disable-extensions "$@"\n' "$CODE_BIN" > "$HOME/.local/bin/code"
+          chmod +x "$HOME/.local/bin/code"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"

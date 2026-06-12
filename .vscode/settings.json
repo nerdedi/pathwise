@@ -1,0 +1,24 @@
+{
+  // Disable the Roslyn-based C# language server and OmniSharp — this is a
+  // TypeScript/Next.js project and neither language server should run here.
+  // Roslyn was repeatedly respawning inside the Copilot cloud-agent runner
+  // and consuming available memory (down to ~1 GB), causing extension-host
+  // instability and eventually killing VS Code process flows.
+  //
+  // `false` keeps the setting at its default (off) if the extension somehow
+  // loads; coupled with the extensions.json unwantedRecommendations list and
+  // the copilot-setup-steps.yml --disable-extensions wrapper, this provides
+  // defence-in-depth against Roslyn auto-starting.
+  "dotnet.server.useOmnisharp": false,
+  "omnisharp.enableRoslynAnalyzers": false,
+  "omnisharp.enableEditorConfigSupport": false,
+  "omnisharp.enableMsBuildLoadProjectsOnDemand": false,
+  "csharp.semanticHighlighting.enabled": false,
+  "dotnet.backgroundAnalysis.analyzerDiagnosticsScope": "none",
+  "dotnet.backgroundAnalysis.compilerDiagnosticsScope": "none",
+
+  // Keep TypeScript server memory reasonable for a Next.js codebase.
+  "typescript.preferences.includePackageJsonAutoImports": "off",
+  "extensions.ignoreRecommendations": false
+}
+
