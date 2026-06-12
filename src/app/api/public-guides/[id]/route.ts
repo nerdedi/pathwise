@@ -24,7 +24,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Guide not found" }, { status: 404 });
     }
 
-    const publicItinerary = sanitizeItineraryForAccess(data.itinerary_json as Itinerary, false);
+    const publicItinerary = {
+      ...sanitizeItineraryForAccess(data.itinerary_json as Itinerary, false),
+      sharedWith: [],
+      sharedWithEmails: [],
+    };
 
     return NextResponse.json({ itinerary: publicItinerary });
   } catch (err) {

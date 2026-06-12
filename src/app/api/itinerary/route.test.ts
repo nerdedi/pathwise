@@ -2,6 +2,7 @@ import { generateJson } from "@/lib/gemini";
 import { logError } from "@/lib/logger";
 import { buildItineraryPrompt } from "@/lib/prompts";
 import { buildFallbackSocialStoryPanels } from "@/lib/social-story";
+import { createClient } from "@/lib/supabase/server";
 import { getTripPlan } from "@/lib/transport-nsw";
 import { getWeatherForecast, getWeatherPackingTips } from "@/lib/weather";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +17,9 @@ vi.mock("@/lib/prompts", () => ({
 
 vi.mock("@/lib/social-story", () => ({
   buildFallbackSocialStoryPanels: vi.fn(),
+}));
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: vi.fn(),
 }));
 
 vi.mock("@/lib/transport-nsw", () => ({
@@ -56,6 +60,13 @@ const baseProfile = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(createClient).mockResolvedValue({
+    auth: {
+      getUser: vi.fn().mockResolvedValue({
+        data: { user: { id: "user-1", email: "owner@example.com" } },
+      }),
+    },
+  } as never);
   vi.mocked(buildItineraryPrompt).mockReturnValue("system prompt");
   vi.mocked(getWeatherForecast).mockResolvedValue([
     {
@@ -86,6 +97,25 @@ beforeEach(() => {
 });
 
 describe("itinerary route", () => {
+  it("returns 401 when generating an itinerary without authentication", async () => {
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null } }) },
+    } as never);
+
+    const response = await POST(
+      new Request("http://localhost/api/itinerary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          venueData: baseVenue,
+          sensoryProfile: baseProfile,
+        }),
+      }) as never
+    );
+
+    expect(response.status).toBe(401);
+  });
+
   it("returns itinerary and uses fallback social story when AI returns none", async () => {
     vi.mocked(generateJson).mockResolvedValue({
       sections: [
@@ -236,5 +266,47 @@ describe("itinerary route", () => {
     expect(Object.keys(payload.itinerary.riskDetails)).toEqual(
       expect.arrayContaining(["sound", "crowds", "lighting", "unpredictability"])
     );
+  });
+
+  it("rolls fallback transport arrival into the next day when time crosses midnight", async () => {
+    vi.mocked(generateJson).mockResolvedValue({
+      sections: [],
+      packingList: [],
+      crisisPlan: {
+        steps: ["Pause"],
+        quietRooms: [],
+        exits: [],
+        helpDeskLocation: "Reception",
+        venuePhone: "",
+        selfCareReminders: ["Breathe"],
+      },
+      affirmations: [{ text: "You got this", timing: "during" }],
+      socialStory: [],
+      riskScore: 4,
+      riskSummary: "Low to moderate sensory load",
+      riskDetails: {},
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/itinerary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          venueData: baseVenue,
+          sensoryProfile: baseProfile,
+          fromSuburb: "Parramatta",
+          visitDate: "2026-06-15",
+          visitTime: "23:30",
+        }),
+      }) as never
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      itinerary: { transportTo: { legs: Array<{ departureTime: string; arrivalTime: string }> } | null };
+    };
+
+    expect(payload.itinerary.transportTo?.legs[1]?.departureTime).toBe("2026-06-15T23:30:00");
+    expect(payload.itinerary.transportTo?.legs[1]?.arrivalTime).toBe("2026-06-16T00:30:00");
   });
 });

@@ -1,5 +1,6 @@
 import { generateJson } from "@/lib/gemini";
 import { logError } from "@/lib/logger";
+import { COPYRIGHT_RISK_TERMS, UNSAFE_TERMS } from "@/lib/social-story";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -22,39 +23,6 @@ const AssistSchema = z.object({
   goal: z.enum(["simplify", "expand", "calm"]).default("calm"),
   audience: z.enum(["child", "teen", "adult", "mixed"]).default("mixed"),
 });
-
-const UNSAFE_TERMS = [
-  "porn",
-  "nude",
-  "explicit",
-  "sexual",
-  "gore",
-  "kill",
-  "suicide",
-  "hate",
-  "racist",
-  "abuse",
-  "violent",
-  "blood",
-  "nsfw",
-];
-
-const COPYRIGHT_RISK_TERMS = [
-  "copyright",
-  "disney",
-  "pixar",
-  "marvel",
-  "dc comics",
-  "pokemon",
-  "star wars",
-  "hello kitty",
-  "nike",
-  "apple logo",
-  "brand logo",
-  "trademark",
-  "™",
-  "®",
-];
 
 function containsUnsafeText(value: string | undefined) {
   const lower = (value ?? "").toLowerCase();

@@ -70,6 +70,32 @@ describe("social story assist route", () => {
     expect(payload.panel.text).toContain("safe");
   });
 
+  it("returns safe fallback when generated text includes terror-related language", async () => {
+    vi.mocked(generateJson).mockResolvedValue({
+      title: "terror alert step",
+      text: "This moment feels like terror.",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/social-story/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          venueName: "Calm Museum",
+          panel: {
+            title: "Arrive",
+            text: "I arrive.",
+          },
+        }),
+      }) as never
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { panel: { title: string; text: string } };
+    expect(payload.panel.title).toBe("Calm next step");
+    expect(payload.panel.text).toContain("safe");
+  });
+
   it("returns safe fallback when generated text has copyright-risk terms", async () => {
     vi.mocked(generateJson).mockResolvedValue({
       title: "Disney-style scene",

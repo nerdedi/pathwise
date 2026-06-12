@@ -275,13 +275,18 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const { error } = await supabase
+    const { data: deletedRows, error } = await supabase
       .from("itineraries")
       .delete()
       .eq("id", id)
-      .eq("user_id", user.id);
+      .eq("user_id", user.id)
+      .select("id");
 
     if (error) throw error;
+
+    if (!deletedRows || deletedRows.length === 0) {
+      return NextResponse.json({ error: "Guide not found" }, { status: 404 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

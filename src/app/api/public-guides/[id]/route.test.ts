@@ -77,7 +77,7 @@ beforeEach(() => {
 });
 
 describe("public guide route", () => {
-  it("strips private notes before returning a public guide", async () => {
+  it("strips private notes and collaborator emails before returning a public guide", async () => {
     const itinerary = makeItinerary();
     const maybeSingle = vi.fn().mockResolvedValue({
       data: { itinerary_json: itinerary, is_public: true },
@@ -101,8 +101,8 @@ describe("public guide route", () => {
     expect(response.status).toBe(200);
     const payload = (await response.json()) as { itinerary: Itinerary };
     expect(payload.itinerary.privateNotes).toBeUndefined();
-    expect(payload.itinerary.sharedWith).toEqual([{ email: "viewer@example.com", role: "viewer" }]);
-    expect(payload.itinerary.sharedWithEmails).toEqual(["viewer@example.com"]);
+    expect(payload.itinerary.sharedWith).toEqual([]);
+    expect(payload.itinerary.sharedWithEmails).toEqual([]);
     expect(payload.itinerary.lockedSectionIds).toEqual(["intro"]);
   });
 

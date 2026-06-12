@@ -3,6 +3,7 @@ import { AiItinerarySchema } from "@/lib/itinerary-ai";
 import { logError, logWarn } from "@/lib/logger";
 import { buildItineraryPrompt } from "@/lib/prompts";
 import { buildFallbackSocialStoryPanels } from "@/lib/social-story";
+import { createClient } from "@/lib/supabase/server";
 import { getTripPlan } from "@/lib/transport-nsw";
 import { getWeatherForecast, getWeatherPackingTips } from "@/lib/weather";
 import type { ItinerarySection, TransportPlan } from "@/types/itinerary";
@@ -32,6 +33,15 @@ function addHoursToTimeString(time: string, hoursToAdd: number) {
   return `${normalizedHours}:${normalizedMinutes}`;
 }
 
+function addHoursToIsoDateTime(date: string | undefined, time: string, hoursToAdd: number) {
+  const baseDate = date ?? new Date().toISOString().slice(0, 10);
+  const [rawHours, rawMinutes] = time.split(":").map((value) => Number(value));
+  const dt = new Date(`${baseDate}T00:00:00`);
+  dt.setHours(Number.isFinite(rawHours) ? rawHours : 10, Number.isFinite(rawMinutes) ? rawMinutes : 0, 0, 0);
+  dt.setMinutes(dt.getMinutes() + hoursToAdd * 60);
+  return dt.toISOString().slice(0, 19);
+}
+
 function buildFallbackTransportPlan({
   from,
   to,
@@ -45,8 +55,8 @@ function buildFallbackTransportPlan({
   time: string;
   routePreference?: "balanced" | "fastest" | "quietest";
 }): TransportPlan {
-  const departure = `${date ?? new Date().toISOString().slice(0, 10)}T${time}:00`;
-  const arrival = `${date ?? new Date().toISOString().slice(0, 10)}T${addHoursToTimeString(time, 1)}:00`;
+  const departure = addHoursToIsoDateTime(date, time, 0);
+  const arrival = addHoursToIsoDateTime(date, time, 1);
 
   return {
     fromSuburb: from,
@@ -278,6 +288,15 @@ function ensureDetailedSections(params: {
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
     const body = await req.json();
     const { venueData, sensoryProfile, visitDate, visitTime, arriveBy, fromSuburb } =
       RequestSchema.parse(body);

@@ -619,6 +619,7 @@ describe("guide detail route", () => {
     const deleteQuery = {
       delete: vi.fn(() => deleteQuery),
       eq: vi.fn(() => deleteQuery),
+      select: vi.fn().mockResolvedValue({ data: [{ id: "guide-123" }], error: null }),
     };
 
     vi.mocked(createClient).mockResolvedValue({
@@ -636,15 +637,34 @@ describe("guide detail route", () => {
     expect(response.status).toBe(200);
   });
 
-  it("returns 500 when delete query fails", async () => {
-    const deleteStepTwo = {
-      eq: vi.fn().mockResolvedValue({ error: new Error("db failure") }),
+  it("returns 404 when delete targets a guide the user does not own", async () => {
+    const deleteQuery = {
+      delete: vi.fn(() => deleteQuery),
+      eq: vi.fn(() => deleteQuery),
+      select: vi.fn().mockResolvedValue({ data: [], error: null }),
     };
-    const deleteStepOne = {
-      eq: vi.fn(() => deleteStepTwo),
+
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1", email: "owner@example.com" } } }) },
+      from: vi.fn(() => deleteQuery),
+    } as never);
+
+    const response = await DELETE(new Request("http://localhost") as never, {
+      params: Promise.resolve({ id: "guide-123" }),
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 500 when delete query fails", async () => {
+    const deleteStepThree = {
+      select: vi.fn().mockResolvedValue({ data: null, error: new Error("db failure") }),
+    };
+    const deleteStepTwo = {
+      eq: vi.fn(() => deleteStepThree),
     };
     const deleteQuery = {
-      delete: vi.fn(() => deleteStepOne),
+      delete: vi.fn(() => deleteStepTwo),
     };
 
     vi.mocked(createClient).mockResolvedValue({

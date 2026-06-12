@@ -78,7 +78,7 @@ const TRANSLATABLE_TEXT_FIELDS = ["title", "text", "speakText", "sensoryCue", "s
 const MAX_SOCIAL_STORY_PANELS = 60;
 const MAX_UPLOAD_IMAGE_BYTES = 5 * 1024 * 1024;
 
-const UNSAFE_TERMS = [
+export const UNSAFE_TERMS = [
   "porn",
   "nude",
   "explicit",
@@ -97,7 +97,7 @@ const UNSAFE_TERMS = [
   "terror",
 ];
 
-const COPYRIGHT_RISK_TERMS = [
+export const COPYRIGHT_RISK_TERMS = [
   "copyright",
   "disney",
   "pixar",
