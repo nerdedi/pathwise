@@ -2,19 +2,26 @@
 
 import { Button } from "@/components/ui/button";
 import {
-    SOCIAL_STORY_LANGUAGE_OPTIONS,
-    SOCIAL_STORY_STORAGE_PREFIX,
+    addSocialStoryPanel,
+    createSocialStoryPanel,
+    duplicateSocialStoryPanel,
     getSocialStoryPanelContent,
-  getSocialStoryVisual,
+    getSocialStoryVisual,
+    isAllowedSocialStoryImageUrl,
     moveSocialStoryPanel,
     normalizeSocialStoryPanels,
     parseStoredSocialStory,
+    removeSocialStoryPanel,
+    SOCIAL_STORY_LANGUAGE_OPTIONS,
+    SOCIAL_STORY_STORAGE_PREFIX,
     updateSocialStoryPanelContent,
+    validateSocialStoryImageDataUrl,
+    validateSocialStorySafety,
 } from "@/lib/social-story";
 import {
-  applyCalmingSpeechPreferences,
-  mapStoryLanguageToSpeechLang,
-  pickPreferredSpeechVoice,
+    applyCalmingSpeechPreferences,
+    mapStoryLanguageToSpeechLang,
+    pickPreferredSpeechVoice,
 } from "@/lib/voice";
 import type { SocialStoryPanel } from "@/types/itinerary";
 import {
@@ -23,14 +30,18 @@ import {
     ArrowUp,
     ChevronLeft,
     ChevronRight,
+    Copy,
     Heart,
     Languages,
     PauseCircle,
     Pencil,
     PlayCircle,
+    Plus,
     Printer,
     RotateCcw,
     Save,
+    Sparkles,
+    Trash2,
     Volume2,
 } from "lucide-react";
 import Link from "next/link";
@@ -80,6 +91,9 @@ export default function SocialStoryViewer({
   const [isEditing, setIsEditing] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<"en" | "es" | "ar" | "zh">("en");
   const [storyPanels, setStoryPanels] = useState<SocialStoryPanel[]>(() => normalizeSocialStoryPanels(panels));
+  const [editorMessage, setEditorMessage] = useState("");
+  const [newFrameCount, setNewFrameCount] = useState(1);
+  const [aiAssistingIndex, setAiAssistingIndex] = useState<number | null>(null);
   const speechLanguage = useMemo(
     () => mapStoryLanguageToSpeechLang(selectedLanguage),
     [selectedLanguage]
@@ -215,8 +229,26 @@ export default function SocialStoryViewer({
 
   const saveCustomStory = () => {
     if (typeof window === "undefined") return;
+
+    const safety = validateSocialStorySafety(storyPanels);
+    if (!safety.ok) {
+      setEditorMessage(`Please review safety checks: ${safety.issues[0]}`);
+      return;
+    }
+
+    const hasInvalidImage = storyPanels.some(
+      (panel) => panel.imageUrl && !isAllowedSocialStoryImageUrl(panel.imageUrl)
+    );
+    if (hasInvalidImage) {
+      setEditorMessage(
+        "One or more image sources are not allowed. Use uploaded images or built-in safe image options."
+      );
+      return;
+    }
+
     const key = `${SOCIAL_STORY_STORAGE_PREFIX}${itineraryId}`;
     sessionStorage.setItem(key, JSON.stringify(storyPanels));
+    setEditorMessage("Social story saved for this itinerary.");
   };
 
   const resetCustomStory = () => {
@@ -227,6 +259,7 @@ export default function SocialStoryViewer({
       const key = `${SOCIAL_STORY_STORAGE_PREFIX}${itineraryId}`;
       sessionStorage.removeItem(key);
     }
+    setEditorMessage("Story reset to itinerary defaults.");
   };
 
   const updatePanelField = (
@@ -239,6 +272,130 @@ export default function SocialStoryViewer({
         [field]: value,
       })
     );
+  };
+
+  const picsumChoices = useMemo(() => {
+    if (!activePanel) return [] as string[];
+    const seed = `${activePanel.title}-${activePanel.sequence}`
+      .toLowerCase()
+      .replace(/\s+/g, "-");
+
+    return [
+      `https://picsum.photos/seed/${encodeURIComponent(seed)}-a/960/540`,
+      `https://picsum.photos/seed/${encodeURIComponent(seed)}-b/960/540`,
+      `https://picsum.photos/seed/${encodeURIComponent(seed)}-c/960/540`,
+      `https://picsum.photos/seed/${encodeURIComponent(seed)}-d/960/540`,
+    ];
+  }, [activePanel]);
+
+  const setPanelImageUrl = (index: number, imageUrl: string) => {
+    setStoryPanels((current) =>
+      normalizeSocialStoryPanels(
+        current.map((panel, panelIndex) =>
+          panelIndex === index ? { ...panel, imageUrl } : panel
+        )
+      )
+    );
+  };
+
+  const handleImageUpload = async (index: number, file: File | undefined) => {
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setEditorMessage("Only PNG, JPEG, or WebP files are allowed.");
+      return;
+    }
+
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("Failed to read image"));
+      reader.readAsDataURL(file);
+    }).catch(() => "");
+
+    if (!dataUrl) {
+      setEditorMessage("Could not read image file.");
+      return;
+    }
+
+    const validation = validateSocialStoryImageDataUrl(dataUrl);
+    if (!validation.ok) {
+      setEditorMessage(validation.reason);
+      return;
+    }
+
+    setPanelImageUrl(index, dataUrl);
+    setEditorMessage("Image uploaded safely for this frame.");
+  };
+
+  const applyAiAssist = async (index: number) => {
+    const panel = storyPanels[index];
+    if (!panel) return;
+
+    setAiAssistingIndex(index);
+    setEditorMessage("");
+
+    try {
+      const localized = getSocialStoryPanelContent(panel, selectedLanguage);
+      const res = await fetch("/api/social-story/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          venueName,
+          quietTimes,
+          goal: "calm",
+          audience: "mixed",
+          panel: {
+            title: localized.title,
+            text: localized.text,
+            sensoryCue: localized.sensoryCue,
+            supportTip: localized.supportTip,
+            speakText: localized.speakText,
+            keywords: localized.keywords,
+            imagePrompt: panel.imagePrompt,
+          },
+        }),
+      });
+
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error ?? "Could not generate AI suggestion");
+      }
+
+      setStoryPanels((current) =>
+        normalizeSocialStoryPanels(
+          current.map((item, itemIndex) => {
+            if (itemIndex !== index) return item;
+            if (selectedLanguage === "en") {
+              return {
+                ...item,
+                title: payload.panel.title ?? item.title,
+                text: payload.panel.text ?? item.text,
+                sensoryCue: payload.panel.sensoryCue ?? item.sensoryCue,
+                supportTip: payload.panel.supportTip ?? item.supportTip,
+                speakText: payload.panel.speakText ?? item.speakText,
+                imagePrompt: payload.panel.imagePrompt ?? item.imagePrompt,
+                keywords: payload.panel.keywords ?? item.keywords,
+              };
+            }
+
+            return updateSocialStoryPanelContent([item], 0, selectedLanguage, {
+              title: payload.panel.title,
+              text: payload.panel.text,
+              sensoryCue: payload.panel.sensoryCue,
+              supportTip: payload.panel.supportTip,
+              speakText: payload.panel.speakText,
+              keywords: payload.panel.keywords,
+            })[0];
+          })
+        )
+      );
+
+      setEditorMessage("AI suggestion applied to this frame.");
+    } catch (err) {
+      setEditorMessage(err instanceof Error ? err.message : "AI suggestion failed.");
+    } finally {
+      setAiAssistingIndex(null);
+    }
   };
 
   return (
@@ -324,6 +481,37 @@ export default function SocialStoryViewer({
                 <RotateCcw className="w-3.5 h-3.5" />
                 Reset
               </Button>
+              {isEditing && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setStoryPanels((current) => {
+                        let next = current;
+                        for (let i = 0; i < Math.max(1, Math.min(newFrameCount, 10)); i += 1) {
+                          next = addSocialStoryPanel(next, createSocialStoryPanel(next.length));
+                        }
+                        return next;
+                      });
+                      setEditorMessage("New frame(s) added.");
+                    }}
+                    className="gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add frame
+                  </Button>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={newFrameCount}
+                    onChange={(e) => setNewFrameCount(Number(e.target.value) || 1)}
+                    className="h-9 w-16 rounded-lg border border-sage-200 bg-white px-2 text-xs text-sage-700"
+                    aria-label="Number of frames to add"
+                  />
+                </>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2 text-xs">
@@ -384,6 +572,7 @@ export default function SocialStoryViewer({
             <Languages className="w-3 h-3" />
             Language toggle shows translated text when available. Editing updates the selected language view.
           </p>
+          {editorMessage && <p className="text-xs text-sage-600 mt-2">{editorMessage}</p>}
         </div>
 
         {/* Printable story */}
@@ -462,6 +651,77 @@ export default function SocialStoryViewer({
                       className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sm text-sage-700 min-h-16"
                       aria-label="Edit panel spoken text"
                     />
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => void applyAiAssist(activePanelIndex)}
+                        disabled={aiAssistingIndex === activePanelIndex}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        {aiAssistingIndex === activePanelIndex ? "AI assisting…" : "AI help this frame"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() =>
+                          setStoryPanels((current) =>
+                            duplicateSocialStoryPanel(current, activePanelIndex)
+                          )
+                        }
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        Duplicate frame
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => {
+                          setStoryPanels((current) =>
+                            removeSocialStoryPanel(current, activePanelIndex)
+                          );
+                          setActivePanelIndex((current) => Math.max(0, current - 1));
+                        }}
+                        disabled={storyPanels.length <= 1}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete frame
+                      </Button>
+                    </div>
+
+                    <label className="text-xs text-sage-600">
+                      Upload your own image (PNG/JPEG/WebP, max 5MB)
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="mt-1 block w-full text-xs"
+                        onChange={(e) => {
+                          void handleImageUpload(activePanelIndex, e.target.files?.[0]);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+
+                    <div>
+                      <p className="text-xs text-sage-600 mb-1">Choose a safe built-in image</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {picsumChoices.map((url) => (
+                          <button
+                            key={url}
+                            type="button"
+                            onClick={() => setPanelImageUrl(activePanelIndex, url)}
+                            className="rounded-lg border border-sage-200 overflow-hidden"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={url} alt="Selectable story visual" className="h-16 w-full object-cover" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -532,6 +792,38 @@ export default function SocialStoryViewer({
                           <Button
                             variant="outline"
                             size="sm"
+                            onClick={() => void applyAiAssist(index)}
+                            disabled={aiAssistingIndex === index}
+                            className="h-7 w-7 p-0"
+                            aria-label="AI assist this step"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setStoryPanels((current) => duplicateSocialStoryPanel(current, index))}
+                            className="h-7 w-7 p-0"
+                            aria-label="Duplicate step"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setStoryPanels((current) => removeSocialStoryPanel(current, index));
+                              setActivePanelIndex((current) => Math.max(0, Math.min(current, storyPanels.length - 2)));
+                            }}
+                            disabled={storyPanels.length <= 1}
+                            className="h-7 w-7 p-0"
+                            aria-label="Delete step"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => setStoryPanels((current) => moveSocialStoryPanel(current, index, -1))}
                             disabled={index === 0}
                             className="h-7 w-7 p-0"
@@ -599,6 +891,18 @@ export default function SocialStoryViewer({
                         className="w-full rounded-lg border border-sage-200 px-3 py-2 text-xs text-sage-800 min-h-20"
                         aria-label={`Edit step ${panel.sequence} text`}
                       />
+                      <label className="text-xs text-sage-600 block">
+                        Upload image for this frame
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="mt-1 block w-full text-xs"
+                          onChange={(e) => {
+                            void handleImageUpload(index, e.target.files?.[0]);
+                            e.currentTarget.value = "";
+                          }}
+                        />
+                      </label>
                     </div>
                   )}
 

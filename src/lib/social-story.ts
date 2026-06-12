@@ -75,10 +75,31 @@ const SOCIAL_STORY_VISUALS = [
 ] as const;
 
 const TRANSLATABLE_TEXT_FIELDS = ["title", "text", "speakText", "sensoryCue", "supportTip"] as const;
+const MAX_SOCIAL_STORY_PANELS = 60;
+const MAX_UPLOAD_IMAGE_BYTES = 5 * 1024 * 1024;
+
+const UNSAFE_TERMS = [
+  "porn",
+  "nude",
+  "explicit",
+  "sexual",
+  "gore",
+  "kill",
+  "suicide",
+  "hate",
+  "racist",
+  "abuse",
+  "violent",
+];
 
 function cleanText(value: string | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function textLooksUnsafe(value: string | undefined) {
+  const normalized = (value ?? "").toLowerCase();
+  return UNSAFE_TERMS.some((term) => normalized.includes(term));
 }
 
 function cleanKeywords(keywords: string[] | undefined) {
@@ -105,6 +126,52 @@ function buildOpenSourceImageUrl(panel: SocialStoryPanel, index: number) {
   const seed = encodeURIComponent(seedSource || fallbackSeed);
 
   return `https://picsum.photos/seed/${seed}/960/540`;
+}
+
+export function isAllowedSocialStoryImageUrl(url: string | undefined) {
+  if (!url) return false;
+  if (url.startsWith("data:image/png;base64,") || url.startsWith("data:image/jpeg;base64,") || url.startsWith("data:image/webp;base64,")) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === "picsum.photos";
+  } catch {
+    return false;
+  }
+}
+
+export function validateSocialStoryImageDataUrl(dataUrl: string) {
+  const isAllowedMime =
+    dataUrl.startsWith("data:image/png;base64,") ||
+    dataUrl.startsWith("data:image/jpeg;base64,") ||
+    dataUrl.startsWith("data:image/webp;base64,");
+
+  if (!isAllowedMime) {
+    return {
+      ok: false,
+      reason: "Only PNG, JPEG, and WebP images are allowed.",
+    } as const;
+  }
+
+  const base64Part = dataUrl.split(",")[1] ?? "";
+  const estimatedBytes = Math.floor((base64Part.length * 3) / 4);
+  if (estimatedBytes > MAX_UPLOAD_IMAGE_BYTES) {
+    return {
+      ok: false,
+      reason: "Image is too large. Keep uploads under 5MB.",
+    } as const;
+  }
+
+  return { ok: true } as const;
+}
+
+function sanitizePanelImageUrl(panel: SocialStoryPanel, index: number) {
+  if (isAllowedSocialStoryImageUrl(panel.imageUrl)) {
+    return cleanText(panel.imageUrl);
+  }
+  return buildOpenSourceImageUrl(panel, index);
 }
 
 function cleanTranslation(
@@ -154,19 +221,96 @@ function cleanTranslations(translations: SocialStoryTranslation | undefined) {
 }
 
 export function normalizeSocialStoryPanels(panels: SocialStoryPanel[]) {
-  return panels.map((panel, index) => ({
+  return panels.slice(0, MAX_SOCIAL_STORY_PANELS).map((panel, index) => ({
     ...panel,
     sequence: index + 1,
     title: cleanText(panel.title) ?? `Step ${index + 1}`,
     text: cleanText(panel.text) ?? "",
     imagePrompt: cleanText(panel.imagePrompt),
-    imageUrl: cleanText(panel.imageUrl) ?? buildOpenSourceImageUrl(panel, index),
+    imageUrl: sanitizePanelImageUrl(panel, index),
     sensoryCue: cleanText(panel.sensoryCue),
     supportTip: cleanText(panel.supportTip),
     speakText: cleanText(panel.speakText),
     keywords: cleanKeywords(panel.keywords),
     translations: cleanTranslations(panel.translations),
   }));
+}
+
+export function createSocialStoryPanel(seedIndex: number): SocialStoryPanel {
+  return normalizeSocialStoryPanels([
+    {
+      sequence: seedIndex + 1,
+      title: `New step ${seedIndex + 1}`,
+      text: "Describe what happens in this step using calm, simple language.",
+      speakText: "This is my next step.",
+      imagePrompt: "Calm, inclusive visual for this story step",
+      emotion: "calm",
+      supportTip: "I can take this step slowly.",
+      keywords: ["step", "calm"],
+    },
+  ])[0];
+}
+
+export function addSocialStoryPanel(
+  panels: SocialStoryPanel[],
+  panel?: Partial<SocialStoryPanel>
+) {
+  const next = [...panels];
+  if (next.length >= MAX_SOCIAL_STORY_PANELS) {
+    return normalizeSocialStoryPanels(next);
+  }
+
+  next.push({
+    ...createSocialStoryPanel(next.length),
+    ...panel,
+  });
+
+  return normalizeSocialStoryPanels(next);
+}
+
+export function duplicateSocialStoryPanel(panels: SocialStoryPanel[], index: number) {
+  const next = [...panels];
+  const target = next[index];
+  if (!target || next.length >= MAX_SOCIAL_STORY_PANELS) {
+    return normalizeSocialStoryPanels(next);
+  }
+
+  next.splice(index + 1, 0, {
+    ...target,
+    title: `${target.title} (copy)`,
+  });
+
+  return normalizeSocialStoryPanels(next);
+}
+
+export function removeSocialStoryPanel(panels: SocialStoryPanel[], index: number) {
+  if (panels.length <= 1) {
+    return normalizeSocialStoryPanels(panels);
+  }
+
+  const next = [...panels];
+  next.splice(index, 1);
+  return normalizeSocialStoryPanels(next);
+}
+
+export function validateSocialStorySafety(panels: SocialStoryPanel[]) {
+  const issues: string[] = [];
+
+  panels.forEach((panel, index) => {
+    const fields = [panel.title, panel.text, panel.speakText, panel.sensoryCue, panel.supportTip];
+    if (fields.some((value) => textLooksUnsafe(value))) {
+      issues.push(`Step ${index + 1}: contains potentially unsafe language.`);
+    }
+
+    if (panel.imageUrl && !isAllowedSocialStoryImageUrl(panel.imageUrl)) {
+      issues.push(`Step ${index + 1}: image source is not allowed.`);
+    }
+  });
+
+  return {
+    ok: issues.length === 0,
+    issues,
+  };
 }
 
 export function getSocialStoryPanelContent(

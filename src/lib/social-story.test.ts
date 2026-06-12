@@ -1,13 +1,19 @@
 import type { SocialStoryPanel } from "@/types/itinerary";
 import { describe, expect, it } from "vitest";
 import {
+    addSocialStoryPanel,
     buildFallbackSocialStoryPanels,
+    duplicateSocialStoryPanel,
     getSocialStoryPanelContent,
     getSocialStoryVisual,
+    isAllowedSocialStoryImageUrl,
     moveSocialStoryPanel,
     normalizeSocialStoryPanels,
     parseStoredSocialStory,
+    removeSocialStoryPanel,
     updateSocialStoryPanelContent,
+    validateSocialStoryImageDataUrl,
+    validateSocialStorySafety,
 } from "./social-story";
 
 const basePanels: SocialStoryPanel[] = [
@@ -221,5 +227,41 @@ describe("social story helpers", () => {
     expect(panels.map((panel) => panel.sequence)).toEqual(
       panels.map((_, index) => index + 1)
     );
+  });
+
+  it("adds, duplicates, and removes panels while keeping sequence stable", () => {
+    const added = addSocialStoryPanel(basePanels);
+    expect(added.length).toBe(3);
+    expect(added[2].sequence).toBe(3);
+
+    const duplicated = duplicateSocialStoryPanel(added, 1);
+    expect(duplicated.length).toBe(4);
+    expect(duplicated[2].title).toContain("(copy)");
+
+    const removed = removeSocialStoryPanel(duplicated, 2);
+    expect(removed.length).toBe(3);
+    expect(removed.map((panel) => panel.sequence)).toEqual([1, 2, 3]);
+  });
+
+  it("validates allowed image sources and upload format", () => {
+    expect(isAllowedSocialStoryImageUrl("https://picsum.photos/seed/demo/960/540")).toBe(true);
+    expect(isAllowedSocialStoryImageUrl("data:image/png;base64,AAAA")).toBe(true);
+    expect(isAllowedSocialStoryImageUrl("https://example.com/image.png")).toBe(false);
+
+    expect(validateSocialStoryImageDataUrl("data:image/png;base64,AAAA").ok).toBe(true);
+    expect(validateSocialStoryImageDataUrl("data:image/svg+xml;base64,AAAA").ok).toBe(false);
+  });
+
+  it("flags unsafe panel language through safety validator", () => {
+    const result = validateSocialStorySafety([
+      {
+        sequence: 1,
+        title: "Unsafe",
+        text: "This is violent",
+      },
+    ]);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues[0]).toContain("potentially unsafe language");
   });
 });
