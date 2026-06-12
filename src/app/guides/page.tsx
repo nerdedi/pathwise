@@ -11,7 +11,7 @@ import {
 } from "@/lib/local-auth";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseAuthConfigured } from "@/lib/supabase/config";
-import { Bell, Calendar, CheckCheck, Copy, Globe, LogOut, MapPin, Save, Search, Trash2 } from "lucide-react";
+import { Bell, Calendar, CheckCheck, Copy, Globe, LogOut, MapPin, RefreshCw, Save, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -54,6 +54,7 @@ export default function GuidesPage() {
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [markingNotificationId, setMarkingNotificationId] = useState<string | null>(null);
   const [markingAllNotifications, setMarkingAllNotifications] = useState(false);
+  const [refreshingNotifications, setRefreshingNotifications] = useState(false);
 
   const applyLocalTestLogin = (nextEmail = LOCAL_TEST_EMAIL, passwordValue = LOCAL_TEST_PASSWORD) => {
     if (passwordValue.length < 8) {
@@ -372,6 +373,15 @@ export default function GuidesPage() {
     }
   };
 
+  const refreshNotifications = async () => {
+    setRefreshingNotifications(true);
+    try {
+      await loadNotifications();
+    } finally {
+      setRefreshingNotifications(false);
+    }
+  };
+
   const filteredGuides = guides.filter((guide) => {
     const haystack = `${guide.venue_name} ${guide.venue_suburb ?? ""}`.toLowerCase();
     return haystack.includes(query.toLowerCase().trim());
@@ -546,17 +556,32 @@ export default function GuidesPage() {
                       : "All notifications are read"}
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={markAllNotificationsRead}
-                  disabled={markingAllNotifications || notifications.every((item) => item.readAt)}
-                  className="gap-1.5"
-                >
-                  <CheckCheck className="h-3.5 w-3.5" />
-                  {markingAllNotifications ? "Marking…" : "Mark all read"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void refreshNotifications();
+                    }}
+                    disabled={notificationsLoading || refreshingNotifications}
+                    className="gap-1.5"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${refreshingNotifications ? "animate-spin" : ""}`} />
+                    {refreshingNotifications ? "Refreshing…" : "Refresh"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={markAllNotificationsRead}
+                    disabled={markingAllNotifications || notifications.every((item) => item.readAt)}
+                    className="gap-1.5"
+                  >
+                    <CheckCheck className="h-3.5 w-3.5" />
+                    {markingAllNotifications ? "Marking…" : "Mark all read"}
+                  </Button>
+                </div>
               </div>
 
               {notificationsLoading ? (
